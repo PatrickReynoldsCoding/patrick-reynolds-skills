@@ -130,9 +130,10 @@ The same function does have a step worth a name: the three-part "this line was l
 | `MIN_FOREIGN_LETTERS` | `MIN_LETTERS_OF_A_FOREIGN_ALPHABET`: a constant says what it limits, and of what |
 | `LineVerdict.check` | `LineVerdict.decided_by`: a field says its role, not just a topic |
 
-**Name functions for what they do in the problem, not with generic verbs.**
-**Why:** `accept`, `observe`, `process`, `handle`, `finish`, `start` say that something happens, not what. The reader has to open the function to find out.
+**Name functions for what they do in the problem. A generic verb is fine when it fits the work and has an object.**
+**Why:** `accept`, `observe`, `process`, `handle`, `finish`, `start` on their own say that something happens, not what. The reader has to open the function to find out. We don't hate generic verbs. The verb has to fit what the function really does, and it needs an object that says what it works on.
 **How to apply:** Use a verb and the thing it acts on: `accept(line)` → `scoreLine(line)`; `observe(line)` → `showToMatchersAndWait(line)`; `acceptOldest` → `scoreFirstWaitingLine`; `finish` → `closeLastMatches`; `start(...)` → `newScanState(...)`. The same goes for a name that only says what comes back: `script_of(character)` → `detect_script_from_char(character)`, a more descriptive name that says what the function does and what it gets.
+Example of a verb that did not fit (evaluation-api `line_language_check.py`): `check_line(line, expected_language, detector)` → `evaluate_line_language(...)`. "Check" sounds like one quick yes/no look, but the function weighs a lot of information in the line (its alphabets, the characters only one language uses, the language detector) and returns a verdict. "Evaluate" fits that, and it is the word the repo already uses (`evaluate_language_adherence`). The helpers follow: `_check_lines` → `_evaluate_lines_language`, `_check_with_detector` → `_evaluate_line_language_with_detector`.
 
 **Name every intermediate value, lambda parameter and destructured tuple.**
 **Why:** In a fold or a recursive loop, the reader has to know at each step what the value is now. `acc`, `x`, `(a, b)` and `current` hide that.
