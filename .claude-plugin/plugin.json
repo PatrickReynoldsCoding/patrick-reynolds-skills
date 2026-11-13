@@ -1,7 +1,7 @@
 {
   "name": "patrick-reynolds-skills",
-  "version": "0.4.0",
-  "description": "General-purpose Claude Code skills (explain, code-review walkthroughs, code-flow diagrams, Excel tables) and a hook catalog",
+  "version": "0.5.0",
+  "description": "General-purpose Claude Code skills (explain, refactor-and-review, code-review walkthroughs, code-flow diagrams, Excel tables) and a hook catalog",
   "author": {
     "name": "PatrickReynoldsCoding",
     "url": "https://github.com/PatrickReynoldsCoding"
