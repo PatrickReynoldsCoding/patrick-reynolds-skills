@@ -30,8 +30,9 @@ In a stack of PRs, make the rename in the lowest PR that adds the name, then reb
 ## General — best practices & style (all languages)
 
 **Extract logic into well-named helper functions before they get long.**
-**Why:** Long functions are hard to test in isolation and obscure intent.
+**Why:** Long functions are hard to test in isolation and obscure intent. We want to read a method from top to bottom and get a high-level idea of what it does. A test: try to explain the function in a couple of sentences. The lines of the function should be those sentences.
 **How to apply:** If a block of logic inside a function has a clear purpose, pull it into a private helper with a name that says what it does. A loop that searches for one answer is a good sign: give it a name and return the answer. The calling function then reads as a list of its steps.
+**But don't wrap a step that is basic and obvious.** Group logic that is hard to explain into well-named functions. A step the reader understands at once, such as one `del`, stays inline, because a helper there hides a trivial line behind a name and makes the reader jump to it.
 
 Example (evaluation-api `line_language_check.py`). Before, one function did three things inline:
 ```python
@@ -69,6 +70,21 @@ def _detect_script_from_unicode_range(code_point: int) -> Optional[str]:
     return None
 ```
 Follow the naming pattern the code already uses (here Patrick's `detect_script_from_…`), so related helpers read as a family.
+
+Example of the other side (evaluation-api `line_language_check.py`). A helper for one obvious step was inlined:
+```python
+# before: a named helper for a copy and one delete
+letters_to_judge = letters_outside if expected_answer_is_latin else _without_latin_left_to_the_word_check(letters_outside)
+
+def _without_latin_left_to_the_word_check(letters_outside_the_expected_alphabets: Counter) -> Counter:
+    letters_without_latin = Counter(letters_outside_the_expected_alphabets)
+    del letters_without_latin["latin"]
+    return letters_without_latin
+
+# after: one line, clear at a glance
+del unexpected_letter_count_by_script["latin"]
+```
+The same function does have a step worth a name: the three-part "this line was left untranslated" condition became its own finder, `_find_untranslated_line_failure`, so `_find_alphabet_failure` reads as a short list of the rules it applies.
 
 **When refactoring a branch's diff, only touch code the branch actually added or changed — never pre-existing code the branch didn't touch, even in the same function.**
 **Why:** Confirmed across a 4-repo refactor pass (ask-imanage-api/queue/search-agent/llm-service, 2026-07-08): scope creep into untouched code mixes unrelated changes into the PR, makes the diff unreviewable/unattributable, and risks regressions in code nobody asked to change. It's also fine — expected, even — to find zero extraction-worthy blocks in a branch; don't manufacture extractions just to have something to show.
@@ -116,7 +132,7 @@ Follow the naming pattern the code already uses (here Patrick's `detect_script_f
 
 **Name functions for what they do in the problem, not with generic verbs.**
 **Why:** `accept`, `observe`, `process`, `handle`, `finish`, `start` say that something happens, not what. The reader has to open the function to find out.
-**How to apply:** Use a verb and the thing it acts on: `accept(line)` → `scoreLine(line)`; `observe(line)` → `showToMatchersAndWait(line)`; `acceptOldest` → `scoreFirstWaitingLine`; `finish` → `closeLastMatches`; `start(...)` → `newScanState(...)`.
+**How to apply:** Use a verb and the thing it acts on: `accept(line)` → `scoreLine(line)`; `observe(line)` → `showToMatchersAndWait(line)`; `acceptOldest` → `scoreFirstWaitingLine`; `finish` → `closeLastMatches`; `start(...)` → `newScanState(...)`. The same goes for a name that only says what comes back: `script_of(character)` → `detect_script_from_char(character)`, a more descriptive name that says what the function does and what it gets.
 
 **Name every intermediate value, lambda parameter and destructured tuple.**
 **Why:** In a fold or a recursive loop, the reader has to know at each step what the value is now. `acc`, `x`, `(a, b)` and `current` hide that.
@@ -153,7 +169,9 @@ Follow the naming pattern the code already uses (here Patrick's `detect_script_f
 - Write no new `#` / `//` comments, including inline trailing ones such as `# CVE-…` on a dependency pin or `# TEMPORARY` markers. When a comment seems needed, first try a clearer name, a small named helper or a named constant (see "Give a bare condition or literal a name").
 - Put the reasoning in the commit message or the PR body.
 - When editing a line that already carries a comment, don't rewrite the comment text. Leave existing comments the change doesn't touch alone.
-- **The one exception:** outside knowledge the code depends on and no name can carry, such as a standard, a spec or a data format. Write a short comment with a link to the source. Example (asked for by Patrick in evaluation-api#78): the Unicode general categories behind `_is_letter`, with `https://www.unicode.org/reports/tr44/#General_Category_Values`.
+- **The one exception:** outside knowledge the code depends on and no name can carry, such as a standard, a spec or a data format, or very niche knowledge. Write a short comment, with a link to the source where there is one (it is nice to have, but don't overdo it). Examples:
+  - Asked for by Patrick in evaluation-api#78: the Unicode general categories behind `_is_letter`, with `https://www.unicode.org/reports/tr44/#General_Category_Values`.
+  - Niche knowledge (evaluation-api `line_language_check.py`): `_MODIFIER_LETTER_CATEGORY = "Lm"  # Such as: ʰ (Modifier Letter Small H), ˈ (Modifier Letter Vertical Line), ˢ (Modifier Letter Small S)`. A reader can't guess what a modifier letter looks like from the name.
 
 **Use sealed error type hierarchies, not string messages.**
 **Why:** Strings can't be pattern-matched exhaustively; a sealed hierarchy forces callers to handle every case and keeps error context structured.
@@ -167,11 +185,53 @@ Follow the naming pattern the code already uses (here Patrick's `detect_script_f
 **Why:** A good test name tells the reader the rule without them reading the code. A failing test then says which rule broke.
 **How to apply:** Name each test as a sentence about what the code does, using the domain words, e.g. `"keeps the earlier match when two matches score the same"`. Use small, real-looking inputs (a real sentence, not `"a b c"`). Group tests by the function they test (`suite("scoreLine")`), and cover private helpers through their package-private access.
 
+**In a test, show the data the code works with.**
+**Why:** A reader of a test should see what data is involved without opening another file. `Counter({'arabic': 20, 'latin': 13})` says more than a call that builds it. Sometimes building the input with the real code shows more about how the function is used, and you can't have both.
+**How to apply:** Define the input object in full where you can (`letter_count = Counter({"arabic": 20, "latin": 13})`). When you build it with the real code because that shows the context, add a comment with the value it equals. That comment is a deliberate exception to the no-comment rule. Example (evaluation-api `test_line_language_check.py`):
+```python
+def test_latin_words_in_an_arabic_answer_are_left_to_the_word_check(self):
+    letter_count: Counter = count_letters_by_script("يدفع المشتري Purchase Price إلى البائع")
+    # Counter({'arabic': 20, 'latin': 13})
+    assert _find_unexpected_alphabet_failure(letter_count, frozenset({"arabic"})) is None
+```
+
+**In a test, compare the whole expected object with the whole actual object.**
+**Why:** Reading `object.value` shows only part of the data. Comparing whole objects shows the reader the whole shape of the data involved, and the test checks every field, so a wrong field can't slip past.
+**How to apply:** Build `expected_<thing>` in full, call the code into `actual_<thing>`, and assert they are equal. Use a type that has equality (a case class, or a pydantic dataclass). Example (evaluation-api `test_line_language_check.py`):
+```python
+# before
+verdict = _find_alphabet_failure(letter_count, "de")
+assert verdict.reason == "foreign_alphabet"
+assert verdict.detected_language == "han"
+
+# after
+expected_verdict = LineVerdict(is_correct=False, decided_by="script", detected_language="han", reason="foreign_alphabet")
+
+actual_verdict = _find_alphabet_failure(letter_count, "de")
+
+assert actual_verdict == expected_verdict
+```
+
+**Annotate the type of every local variable.**
+**Why:** Type annotations are great, and we love them. The reader sees what a variable holds without opening the function on the right, and which values can be `None`.
+**How to apply:** Write the type even when the function on the right already declares it. Examples (evaluation-api): `letters_by_script: Counter = count_letters_by_script(text_without_urls)` and `verdict: LineVerdict | None = check_line(line, expected_lang, detector)`.
+
 **Separate service interface from implementation — callers depend on the trait, not the class.**
 **Why:** Swapping implementations (for tests, different backends, staged rollouts) requires no call-site changes when the interface is stable.
 **How to apply:** Define a trait for every service with the public contract. Put the implementation in a separate (often private) class. Expose a factory or layer in a companion object. Callers reference only the trait.
 
 ## Python
+
+**Always use Pydantic over Python's `dataclasses`.**
+**Why:** We love pydantic and will always use it over Python dataclasses.
+**How to apply:** For a result or value type, `from pydantic.dataclasses import dataclass`, and keep `@dataclass(frozen=True)`. Example (evaluation-api `line_language_check.py`, `LineVerdict`):
+```python
+# before
+from dataclasses import dataclass
+
+# after
+from pydantic.dataclasses import dataclass
+```
 
 **Use plain for-loops, not list comprehensions, for multi-step logic.**
 **Why:** List comprehensions that do non-trivial work read bottom-up; for-loops read top-down.
