@@ -214,8 +214,7 @@ assert actual_verdict == expected_verdict
 
 **Annotate the type of every local variable.**
 **Why:** Type annotations are great, and we love them. The reader sees what a variable holds without opening the function on the right, and which values can be `None`.
-**How to apply:** Write the type even when the function on the right already declares it. Examples (evaluation-api): `letters_by_script: Counter = count_letters_by_script(text_without_urls)` and `verdict: LineVerdict | None = check_line(line, expected_lang, detector)`.
-
+**How to apply:** Write the type even when the function on the right already declares it. Examples (evaluation-api): `letters_by_script: Counter = count_letters_by_script(text_without_urls)` and `verdict: Optional[LineVerdict] = check_line(line, expected_lang, detector)`.
 **Separate service interface from implementation — callers depend on the trait, not the class.**
 **Why:** Swapping implementations (for tests, different backends, staged rollouts) requires no call-site changes when the interface is stable.
 **How to apply:** Define a trait for every service with the public contract. Put the implementation in a separate (often private) class. Expose a factory or layer in a companion object. Callers reference only the trait.
@@ -231,6 +230,17 @@ from dataclasses import dataclass
 
 # after
 from pydantic.dataclasses import dataclass
+```
+
+**Write `Optional[X]`, not `X | None`.**
+**Why:** We don't like `| None`. We prefer `Optional[...]`.
+**How to apply:** Use `Optional[X]` for variables, parameters and return types, with `from typing import Optional`. Example (evaluation-api `language_adherence_metrics.py`):
+```python
+# not this
+verdict: LineVerdict | None = check_line(line, expected_lang, self.language_detector)
+
+# this
+verdict: Optional[LineVerdict] = check_line(line, expected_lang, self.language_detector)
 ```
 
 **Use plain for-loops, not list comprehensions, for multi-step logic.**
