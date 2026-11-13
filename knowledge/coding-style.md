@@ -214,7 +214,34 @@ assert actual_verdict == expected_verdict
 
 **Annotate the type of every local variable.**
 **Why:** Type annotations are great, and we love them. The reader sees what a variable holds without opening the function on the right, and which values can be `None`.
-**How to apply:** Write the type even when the function on the right already declares it. Examples (evaluation-api): `letters_by_script: Counter = count_letters_by_script(text_without_urls)` and `verdict: Optional[LineVerdict] = check_line(line, expected_lang, detector)`.
+**How to apply:** Write the type even when the function on the right already declares it. Examples (evaluation-api): `letter_count_in_line_by_script: Counter = count_letters_by_script(text_without_urls)` and `verdict: Optional[LineVerdict] = check_line(line, expected_lang, detector)`.
+
+**Return a named type, not a tuple of data.**
+**Why:** A tuple's fields have no names, so the caller has to remember the order, and a reader of `lpr, accuracy, line_details, line_findings = ...` has to open the function to know what each one is. A named type shows the shape of the result where it is used, and adding a field doesn't break every caller.
+**How to apply:** When a function returns several values that belong together, return a frozen pydantic dataclass (or a case class) with one named field for each. Name the fields for what they hold, after the keys the result is later written under. Example (evaluation-api `language_adherence_metrics.py`):
+```python
+# before
+def analyze_line_level_adherence(self, answer: str, expected_language: str) -> Tuple[float, float, List[Dict], List[Finding]]:
+    ...
+    return lpr, accuracy, line_details, line_findings
+
+lpr, accuracy, line_details, line_findings = self.analyze_line_level_adherence(answer, expected_lang)
+
+# after
+@dataclass(frozen=True)
+class LineLevelAdherence:
+    line_level_pass_rate: float
+    accuracy: float
+    line_details: List[Dict[str, Any]]
+    line_findings: List[Finding]
+
+def analyze_line_level_adherence(self, answer: str, expected_language: str) -> LineLevelAdherence:
+    ...
+    return LineLevelAdherence(line_level_pass_rate=lpr, accuracy=accuracy, line_details=line_details, line_findings=line_findings)
+
+line_level_adherence: LineLevelAdherence = self.analyze_line_level_adherence(answer, expected_lang)
+```
+
 **Separate service interface from implementation — callers depend on the trait, not the class.**
 **Why:** Swapping implementations (for tests, different backends, staged rollouts) requires no call-site changes when the interface is stable.
 **How to apply:** Define a trait for every service with the public contract. Put the implementation in a separate (often private) class. Expose a factory or layer in a companion object. Callers reference only the trait.
