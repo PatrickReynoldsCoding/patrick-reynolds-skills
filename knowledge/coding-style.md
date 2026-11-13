@@ -260,6 +260,19 @@ from dataclasses import dataclass
 from pydantic.dataclasses import dataclass
 ```
 
+**Test emptiness with `len(x) == 0` and missing with `is None`, not by truthiness.**
+**Why:** `if not letter_count_in_line_by_script:` could mean empty, `None` or `0`. `len(x) == 0` can only mean empty, so the reader sees exactly what is tested, and a later type change (a `Counter` that becomes `Optional[Counter]`) can't change the meaning without anyone noticing. It also matches the habit from Scala and ZIO of testing emptiness explicitly. PEP 8 and linters such as ruff (`PLC1802`) prefer `if not x`, so turn that check off if a linter is added.
+**How to apply:** Use `len(x) == 0` for empty and `len(x) > 0` for not empty on lists, sets, dicts and counters. Use `x is None` / `x is not None` for a missing value. Keep `if flag:` and `if not flag:` for booleans. Example (evaluation-api `line_language_check.py`):
+```python
+# not this
+if not letter_count_in_line_by_script:
+    return None
+
+# this
+if len(letter_count_in_line_by_script) == 0:
+    return None
+```
+
 **Write `Optional[X]`, not `X | None`.**
 **Why:** We don't like `| None`. We prefer `Optional[...]`.
 **How to apply:** Use `Optional[X]` for variables, parameters and return types, with `from typing import Optional`. Example (evaluation-api `language_adherence_metrics.py`):
