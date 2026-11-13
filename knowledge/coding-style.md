@@ -1,5 +1,32 @@
 # Coding Style
 
+## How to build it: make it work and measure it, then refactor
+
+**Build the simplest version that works first, and measure it before you make it pretty.**
+**Why:** The first version is the yardstick. On a one-pass text scanner, the first version used local mutable buffers and was the fastest and leanest version we ever had. Every later refactor was judged against its numbers. Without a measured first version, you can't tell whether a refactor made things worse.
+**How to apply:** Write the straightforward version, even with local `var`s or mutable collections if that is the clearest fast way. Then measure, and write the numbers down:
+- **Memory:** peak heap or allocation on the biggest real input, e.g. the largest document size the service accepts.
+- **CPU and latency:** single calls, and calls run in parallel, on small and large inputs.
+- **Output:** what it returns for a wide set of inputs.
+
+Only then start to refactor.
+
+**Lock the behaviour before you refactor: a snapshot test and the same benchmark, run after every step.**
+**Why:** A refactor must change how the code reads, not what it does or what it costs. A big snapshot catches tiny output changes that hand-written tests miss.
+**How to apply:**
+- **Snapshot test:** run thousands of input combinations through the code, and save both a hash of the output and a readable output file. Run it on the base branch too, so you know the starting hash.
+- **After every refactor commit:** run the snapshot and the benchmark. Put the before → after numbers in the commit message, e.g. "Same output (10,080-case snapshot unchanged). 1,500-page input: 87 → 94 ms."
+- **Budget:** a small cost for a clear readability gain is fine. Making the scanner immutable cost about 5–8% (87 → 94 ms) with identical output, and that was accepted. If a step costs more than that, or memory grows with the input when it didn't before, stop and report the numbers before you go on.
+
+**When there are several reasonable designs, build each one on its own branch and compare them.**
+**Why:** Opinions about which design reads best are cheap to test and expensive to argue about. Real code and real numbers settle it.
+**How to apply:** Give each option a letter and a branch (`<ticket>-option-a`, `-option-b`, …), all from the same base. Run the same snapshot and benchmark on each one. Report a table with output (same/different), latency, memory and a short readability note, then recommend one. Options can be combined (e.g. "D+E"). Treat a difference smaller than run-to-run noise as no difference.
+
+**Do renames in their own commit, before structural changes.**
+**Why:** A rename-only commit is easy to review: nothing changes except names. Mixed into a restructure, it hides the real change.
+**How to apply:** Commit the renames first, then move code into new files or types. If Patrick renamed something, keep his name. He did it for a reason.
+In a stack of PRs, make the rename in the lowest PR that adds the name, then rebase the PRs above it and run the tests on each. Leave a name that later PRs import (e.g. `script_of`) for a separate rename across the whole stack, so one PR's rename doesn't break the next.
+
 ## General — best practices & style (all languages)
 
 **Extract logic into well-named helper functions before they get long.**
@@ -7,7 +34,7 @@
 **How to apply:** If a block of logic inside a function has a clear purpose, pull it into a private helper with a name that says what it does.
 
 **When refactoring a branch's diff, only touch code the branch actually added or changed — never pre-existing code the branch didn't touch, even in the same function.**
-**Why:** Scope creep into untouched code mixes unrelated changes into the PR, makes the diff unreviewable/unattributable, and risks regressions in code nobody asked to change. It's also fine — expected, even — to find zero extraction-worthy blocks in a branch; don't manufacture extractions just to have something to show.
+**Why:** Confirmed across a 4-repo refactor pass (ask-imanage-api/queue/search-agent/llm-service, 2026-07-08): scope creep into untouched code mixes unrelated changes into the PR, makes the diff unreviewable/unattributable, and risks regressions in code nobody asked to change. It's also fine — expected, even — to find zero extraction-worthy blocks in a branch; don't manufacture extractions just to have something to show.
 **How to apply:** Run `git diff <base>..<branch>` first and scope all extraction candidates to the actual diff hunks. If an extraction-worthy block sits right next to untouched code in the same function, leave the untouched part alone even if it looks improvable. If an extracted helper has only one call site, make it a local nested function rather than a class/object-level method; promote to object-level only when genuinely reused by multiple call sites in the same file.
 
 **Separate orchestration from computation — callers own the wiring.**
@@ -24,19 +51,84 @@
 
 **Replace if-elif/switch chains with lookup tables (maps/dicts).**
 **Why:** Branch chains are verbose, error-prone to extend, and often have subtle bugs (e.g. string transformations applied before comparison).
-**How to apply:** Module-level maps with descriptive names (e.g. `_ENV_SUFFIX_TO_DISPLAY_NAME`) replace chains cleanly.
+**How to apply:** Module-level maps with descriptive names replace chains cleanly. Name a map `<VALUE>_BY_<KEY>` (`LINGUA_LANGUAGE_BY_CODE`, `_OTHER_HAN_LANGUAGE_BY_LANGUAGE`) or `<KEY>_TO_<VALUE>` (`_ENV_SUFFIX_TO_DISPLAY_NAME`), so a lookup reads as a sentence: `_OTHER_HAN_LANGUAGE_BY_LANGUAGE["ja"]`.
 
 **No single-character variable names — everything must be descriptive.**
 **Why:** Code is read far more than written. `recorded_version` vs `candidate_version` is immediately clear; `a` vs `b` requires context-switching.
 **How to apply:** Use semantic names that explain the variable's purpose. Loop indices where context is obvious (e.g., `for i in range(10)`) are acceptable; data variables always get full names.
 
-**Comments should explain WHY, not WHAT — good names eliminate "what" comments.**
-**Why:** Code that reads well doesn't need narration. Over-commenting reduces signal-to-noise and rots as code changes.
-**How to apply:** Don't comment obvious code. Only comment when the decision is non-obvious (workarounds, hidden constraints, invariants, or surprising design choices).
+**Name things for what they are in the problem, not for their role in the algorithm.**
+**Why:** Generic algorithm words (`pending`, `bucket`, `capacity`, `buffer`, `state`, `result`, `items`, `tokens`) make the reader keep a mental map from code to meaning. A domain name gives that meaning directly. Long names are fine, because the reader saves more time than the writer spends.
+**How to apply:** Ask "what is in it?" and "for what?", and put both answers in the name:
+
+| Generic | Says what it is |
+|---|---|
+| `pending` | `waitingLines` |
+| `bucket` | `bestMatchesPerPattern` |
+| `capacity` | `matchesToKeepPerPattern` |
+| `tokens` (a parameter) | `documentTokens` |
+| `firstPos`, `prevEnd` | `positionOfFirstReadLine`, `endOfLastReadLine` |
+| `hasPhrase` | `anyPhraseQuery` (a boolean reads as a question about the input) |
+| `text` (after URLs were removed) | `text_without_urls`: say what has already been done to the value |
+| `count`, `characters` | `letter_count`, `distinct_characters`: say what is counted or collected |
+| `start, end` (a range) | `first_code_point, last_code_point` |
+| `best`, `code`, `char` | `most_likely`, `language_code`, `character`: no abbreviations |
+| `longest`, `run` | `longest_run`, `current_run` |
+| `MIN_FOREIGN_LETTERS` | `MIN_LETTERS_OF_A_FOREIGN_ALPHABET`: a constant says what it limits, and of what |
+| `LineVerdict.check` | `LineVerdict.decided_by`: a field says its role, not just a topic |
+
+**Name functions for what they do in the problem, not with generic verbs.**
+**Why:** `accept`, `observe`, `process`, `handle`, `finish`, `start` say that something happens, not what. The reader has to open the function to find out.
+**How to apply:** Use a verb and the thing it acts on: `accept(line)` → `scoreLine(line)`; `observe(line)` → `showToMatchersAndWait(line)`; `acceptOldest` → `scoreFirstWaitingLine`; `finish` → `closeLastMatches`; `start(...)` → `newScanState(...)`.
+
+**Name every intermediate value, lambda parameter and destructured tuple.**
+**Why:** In a fold or a recursive loop, the reader has to know at each step what the value is now. `acc`, `x`, `(a, b)` and `current` hide that.
+**How to apply:**
+- Fold accumulators and results: `lastState` → `stateAfterLastLine`; `observed` → `stateWithLineWaiting`.
+- Lambda parameters: `(previous, x)` → `(scanState, currentLine)`.
+- Destructured tuples: `val (oldest, rest) = queue.dequeue` → `val (firstLineInQueue, restOfQueue) = ...`.
+- Recursive-loop parameters: `from(index, current, bucket)` → `moveFrom(matcherIndex, matchersSoFar, bestMatchesSoFar)`.
+- Values inside a step: `ranking` / `nextRanking` → `patternBestMatches` / `updatedPatternBestMatches`.
+
+**Give a bare condition or literal a name: a small helper or a constant.**
+**Why:** `category.startswith("L")` or `category == "Lm"` makes the reader stop and work out what "L" means. A name answers that where the code is read.
+**How to apply:** Wrap the check in a helper named for the question it answers, and put the literal in a named constant: `if not _is_letter(unicode_category)`, with `_LETTER_CATEGORY_PREFIX = "L"` and `_MODIFIER_LETTER_CATEGORY = "Lm"`. If a reviewer asks "why do we check X?", the answer is usually a missing name.
+
+**Keep names in an outside contract when you rename the code behind it.**
+**Why:** An API response key, a JSON field or a stored column is read by other code (a dashboard, another repo). Renaming it breaks them.
+**How to apply:** Rename the internal field and keep the external key: `LineVerdict.decided_by` is still written as `"check"` in `line_analysis`. Say so in the commit message.
+
+**Don't add a parameter until a caller passes it, and don't give it a do-nothing default.**
+**Why:** An unused parameter with an identity default (`without_kept_as_written=_nothing_kept_as_written`) makes the reader look for a caller that doesn't exist, and asks "why is this here?".
+**How to apply:** Add the parameter in the change (or the PR in a stack) where the first caller passes it. If every caller passes it, make it required. Remove the default function too.
+
+**Use one word for one idea, and pick the word the users of the code see.**
+**Why:** When the code says "fragment" and the API says "snippet" for the same thing, readers wonder whether they are two things.
+**How to apply:** Choose the word from the public API or the product, and use it in type names, fields, functions, test names and comments. Keep a library's own word only where you talk about that library, e.g. "a port of Lucene's `mergeContiguousFragments`".
+
+**Use named arguments when a call has several values of the same type, or values whose meaning isn't clear from the call.**
+**Why:** `rank(tokens, 1200, 100, 4, queries)` can't be checked by reading it. Named arguments make a wrong order visible.
+**How to apply:** `scan(documentLines = lines, textLength = text.length, matchesToKeepPerPattern = shown + 1, patterns = patterns)`. Also put each parameter on its own line when the signature doesn't fit on one line.
+
+**Don't add comments to code, config or workflow files. Explain with names instead.**
+**Why:** The team removes comments in review because they go stale (2026-10-05: a reviewer flagged them on sidewinder#79, Patrick asked for all added comments to be stripped from every CIN-4044 PR, and extract-common already had a "Remove added explanatory comments" commit). A comment that explains the code usually means a name is missing. The reasoning belongs in the commit message and the PR description, which don't rot alongside the code.
+**How to apply:**
+- Write no new `#` / `//` comments, including inline trailing ones such as `# CVE-…` on a dependency pin or `# TEMPORARY` markers. When a comment seems needed, first try a clearer name, a small named helper or a named constant (see "Give a bare condition or literal a name").
+- Put the reasoning in the commit message or the PR body.
+- When editing a line that already carries a comment, don't rewrite the comment text. Leave existing comments the change doesn't touch alone.
+- **The one exception:** outside knowledge the code depends on and no name can carry, such as a standard, a spec or a data format. Write a short comment with a link to the source. Example (asked for by Patrick in evaluation-api#78): the Unicode general categories behind `_is_letter`, with `https://www.unicode.org/reports/tr44/#General_Category_Values`.
 
 **Use sealed error type hierarchies, not string messages.**
 **Why:** Strings can't be pattern-matched exhaustively; a sealed hierarchy forces callers to handle every case and keeps error context structured.
 **How to apply:** Define a sealed trait (or enum) as the root error type, with specific case classes for each failure mode carrying relevant fields (e.g. `MCPError(tool: String, message: String, cause: Option[Throwable])`). Wire errors through the type system, not exception messages.
+
+**Put one idea in each file, and give each file one test file with the same name.**
+**Why:** A reader who wants "how are matches ranked?" opens one file. A 600-line file with four ideas makes them scroll and guess.
+**How to apply:** When a file holds several separate ideas (input types, the per-kind matchers, the result types, the main loop), move them into a package with one file per idea, and the main entry point in a file named after it. Mirror the layout in the tests: `Matchers.scala` → `MatchersTest.scala`. Put example data shared by the tests in one `<Package>TestData` file. Don't use names like `ExampleTest`: a test file is named after the code it tests.
+
+**Write tests that read like documentation of the behaviour.**
+**Why:** A good test name tells the reader the rule without them reading the code. A failing test then says which rule broke.
+**How to apply:** Name each test as a sentence about what the code does, using the domain words, e.g. `"keeps the earlier match when two matches score the same"`. Use small, real-looking inputs (a real sentence, not `"a b c"`). Group tests by the function they test (`suite("scoreLine")`), and cover private helpers through their package-private access.
 
 **Separate service interface from implementation — callers depend on the trait, not the class.**
 **Why:** Swapping implementations (for tests, different backends, staged rollouts) requires no call-site changes when the interface is stable.
@@ -68,6 +160,20 @@ object MyService {
 }
 private class MyServiceImpl() extends MyService { ... }
 ```
+
+**Make state immutable: case classes stepped with `copy`, carried by `foldLeft` or a `@tailrec` loop.**
+**Why:** Each step returns a new value, so you can test any one step on its own and print any state you get. Hidden changes inside a mutable object can't surprise the next step. In a one-pass scanner this cost only about 5–8% latency (see "Lock the behaviour before you refactor").
+**How to apply:**
+- Replace `var` fields and `mutable.*` collections with fields of an immutable `final case class`. Each method returns the next state (`copy(...)`).
+- Carry the state over the input with `input.foldLeft(State.initial)((state, item) => state.step(item))`.
+- Replace `while` loops with `@tailrec` local functions.
+- Use immutable `Queue`, `Vector` and `Set`.
+- Keep it cheap: when a step changes nothing (most steps in a scan), return `this`, and check `next eq current` before you update a Vector slot. Then the common case allocates nothing.
+- The first measured version may use local mutation (see "Build the simplest version that works first"). Make it immutable in a later commit, with the snapshot and the benchmark unchanged. Tests may still use mutation.
+
+**When one class switches on its input kind in several places, split it into a sealed trait with one case class per kind.**
+**Why:** A class with `Option` fields that only one kind uses, plus a `match` on the kind in each method, mixes two behaviours together. With one type per kind, each type holds only its own state, and the compiler checks each case.
+**How to apply:** e.g. `class Matcher(pattern)` with `Option[PhraseState]` and `pattern match` in 3 methods → `sealed trait Matcher` with `KeywordMatcher` and `PhraseMatcher`. Put the part both kinds share (counters, current match, marks) in its own case class that each one holds (`progress: MatchProgress`). Use a factory on the companion (`Matcher.forPattern(pattern)`).
 
 **Use sealed trait / enum ADTs for all closed value sets.**
 **Why:** The compiler enforces exhaustive pattern matching; adding a case surfaces every unhandled site immediately.
