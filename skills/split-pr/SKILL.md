@@ -32,13 +32,18 @@ Show Patrick a table, then wait for his OK. Always ask first; never split withou
 Also say: the integration branch name, which PRs go over the size guide and why, and which other PRs will move on top.
 
 ## 3. Placeholders (temporary code)
-Sometimes PR n needs something only PR n+1 provides. Then add a **named placeholder** in PR n:
-- a function or value named for what is coming, that does nothing safely (returns `None`, an empty list, a pass);
-- a docstring that starts with `Temporary:` and says what it will do and which part replaces it;
-- no `#` comments.
-Example: `analyze_word_level_adherence` returning `(1.0, [])` in part 1, with "Temporary: the word check comes in part 2 …".
+Sometimes PR n needs something only a later PR provides. Use the smallest placeholder that keeps the code honest:
+- **Preferred: a value, not a new function.** At the place where the logic will run, set a well-named value to the do-nothing result, with one `#` comment naming the PR that brings the logic (number and title) and what it will do. Keep the code that uses the value, so the reader sees where the check will go. This is the one comment the no-comments rule allows, because it is deleted when the logic arrives.
+  ```python
+  # Coming in PR #80 "ASKIM-3362 scorer v2 (3/5): reference profiles and bracket check": in a non-Latin answer, a line with no letter of the answer's alphabet and 2+ Latin words left after names are blanked → whole_line_in_another_language
+  whole_line_in_another_language: Optional[LineVerdict] = None
+  if whole_line_in_another_language is not None:
+      return whole_line_in_another_language
+  ```
+- **Only when callers already need a function or method**, keep it with a do-nothing body and a docstring that starts with `Temporary:` and names the PR that replaces it, e.g. `analyze_word_level_adherence` returning `(1.0, [])` in part 1. Don't create a new placeholder method just to hold a future check (Patrick rejected `_find_whole_line_in_another_language` returning `None` for this).
+- **Removing a rule whose replacement needs later inputs:** remove it in the lowest PR, put the value placeholder there, and add the replacement in the PR where its inputs first exist. Don't add a weaker version low down and rewrite it higher up.
 
-**At the top of the stack, every placeholder must be gone**, and so must anything else no longer needed (a do-nothing default class, an unused parameter, an import). Check with `git grep -n "Temporary:"` on the top branch, and look at each default value that does nothing. Delete leftovers in the PR that made them unnecessary.
+**At the top of the stack, every placeholder must be gone**, and so must anything else no longer needed: a do-nothing default class (`NoTransliteratedNameCheck` left as a default was not accepted), an unused parameter, a one-line wrapper kept only because tests call it (point the tests at the real function instead), an import. Check with `git grep -n "Temporary:\|Coming in PR"` on the top branch, and look at each default value that does nothing. Delete leftovers in the PR that made them unnecessary.
 
 ## 4. Build the stack
 - **Integration branch:** `<ticket>-<short-name>` from `origin/<base of the original PR>`, pushed with no commits. Every stack PR merges into it in order; it goes to the base (usually `main`) at the end, so a partial change never runs anywhere.
@@ -56,8 +61,8 @@ Example: `analyze_word_level_adherence` returning `(1.0, [])` in part 1, with "T
 
 ## 5. Prove it
 1. **Same result:** the top of the stack has exactly the same files as the original branch, except the changes Patrick agreed to. Show `git diff <original head> <top of stack> --stat`, and list each difference.
-2. **Nothing added then replaced:** for each later PR, trace the lines it removes back to the PR that added them (`git diff -U0 <commit>^ <commit>` for the removed ranges, then `git blame` those ranges on `<commit>^`). Report anything added in one PR and removed or rewritten in a later one. Only placeholders should show up; anything else means code arrived too early.
-3. **No leftovers:** `git grep "Temporary:"` on the top branch is empty, and no do-nothing defaults remain.
+2. **Nothing added then replaced:** for each later PR, trace the lines it removes back to the PR that added them (`git diff -U0 <commit>^ <commit>` for the removed ranges, then `git blame` those ranges on `<commit>^`). Report anything added in one PR and removed or rewritten in a later one. Only placeholders should show up; anything else means code arrived too early. Also look for logic whose **meaning** changes higher up while its lines stay (e.g. a limit that counts all letters in part 1 but only the letters left after names are blanked from part 2): report it, because a reviewer of the lower PR judges the wrong version.
+3. **No leftovers:** `git grep "Temporary:\|Coming in PR"` on the top branch is empty, and no do-nothing defaults, unused parameters or test-only wrappers remain.
 4. Move PRs that were built on the original on top of the stack: rebase onto the top branch, run the tests, push with `--force-with-lease`, and change their base (`gh pr edit <n> --base <top branch>`). Check their diff shows only their own change.
 
 ## 6. Hand over
@@ -66,4 +71,8 @@ Example: `analyze_word_level_adherence` returning `(1.0, [])` in part 1, with "T
 - Report: the integration branch, each PR (link, idea, line counts, test result), placeholders and where they are removed, the equality check, the add-then-replace trace, moved PRs, and anything to decide.
 
 ## When a lower PR changes later
-After a review fix on PR n: rebase the PRs above it in order, run the full tests on each, push with `--force-with-lease`. Before renaming anything in PR n, check whether later PRs use the name (`git grep <name> origin/<later branch>`) and carry the rename up. Say which PRs moved.
+Patrick reviews one PR at a time and edits it in his own checkout while you work.
+- **Work on top of his uncommitted edits.** Never commit, stash, reset or check out in his checkout unless he asks. Keep his names. If a file changes while you work, read it again before editing.
+- **Collect the fixes, rebase once.** Don't commit or rebase after every fix. When he says the PR is done, commit it (renames first), then rebase the PRs above it in order, run the full tests on each, and push with `--force-with-lease`. Say which PRs moved.
+- **Before changing PR n, check what later PRs do to the same code:** whether they use a name you rename (`git grep <name> origin/<later branch>`), and whether they rewrite the same function (`git diff origin/<PR n branch> origin/<PR n+1 branch> -- <file>`). Tell Patrick which later PRs will need the change carried up or will conflict, before you make it.
+- **Tests:** when you move tests between classes, check the target class name isn't already used in the file. Python keeps only the last class of a name, so the first one's tests stop running without an error.
