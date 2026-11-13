@@ -31,7 +31,44 @@ In a stack of PRs, make the rename in the lowest PR that adds the name, then reb
 
 **Extract logic into well-named helper functions before they get long.**
 **Why:** Long functions are hard to test in isolation and obscure intent.
-**How to apply:** If a block of logic inside a function has a clear purpose, pull it into a private helper with a name that says what it does.
+**How to apply:** If a block of logic inside a function has a clear purpose, pull it into a private helper with a name that says what it does. A loop that searches for one answer is a good sign: give it a name and return the answer. The calling function then reads as a list of its steps.
+
+Example (evaluation-api `line_language_check.py`). Before, one function did three things inline:
+```python
+def detect_script_from_char(character: str) -> Optional[str]:
+    unicode_category = unicodedata.category(character)
+    if not _is_letter(unicode_category):
+        return None
+    code_point = ord(character)
+    for first_code_point, last_code_point, script in _SCRIPT_RANGES:
+        if first_code_point <= code_point <= last_code_point:
+            return script
+    ...
+    unicode_name = unicodedata.name(character, "")
+    if "LATIN" in unicode_name or "ORDINAL INDICATOR" in unicode_name:
+        return "latin"
+    return unicode_name.split(" ", 1)[0].lower() or "other"
+```
+After, each step has a name, and the top function reads as the order of the steps:
+```python
+def detect_script_from_char(character: str) -> Optional[str]:
+    unicode_category = unicodedata.category(character)
+    if not _is_letter(unicode_category):
+        return None
+    script_from_range = _detect_script_from_unicode_range(ord(character))
+    if script_from_range is not None:
+        return script_from_range
+    ...
+    return _detect_script_from_unicode_name(character)
+
+
+def _detect_script_from_unicode_range(code_point: int) -> Optional[str]:
+    for first_code_point, last_code_point, script in _SCRIPT_RANGES:
+        if first_code_point <= code_point <= last_code_point:
+            return script
+    return None
+```
+Follow the naming pattern the code already uses (here Patrick's `detect_script_from_…`), so related helpers read as a family.
 
 **When refactoring a branch's diff, only touch code the branch actually added or changed — never pre-existing code the branch didn't touch, even in the same function.**
 **Why:** Confirmed across a 4-repo refactor pass (ask-imanage-api/queue/search-agent/llm-service, 2026-07-08): scope creep into untouched code mixes unrelated changes into the PR, makes the diff unreviewable/unattributable, and risks regressions in code nobody asked to change. It's also fine — expected, even — to find zero extraction-worthy blocks in a branch; don't manufacture extractions just to have something to show.
