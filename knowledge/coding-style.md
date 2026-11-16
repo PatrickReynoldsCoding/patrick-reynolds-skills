@@ -127,9 +127,16 @@ Why Latin goes: in an Arabic, Hindi, Japanese or Chinese answer, Latin words (na
 | `start, end` (a range) | `first_code_point, last_code_point` |
 | `best`, `code`, `char` | `most_likely`, `language_code`, `character`: no abbreviations |
 | `longest`, `run` | `longest_run`, `current_run` |
-| `MIN_FOREIGN_LETTERS` | `MIN_LETTERS_OF_A_FOREIGN_ALPHABET`: a constant says what it limits, and of what |
+| `MIN_FOREIGN_LETTERS` | `MIN_LETTERS_OF_AN_UNEXPECTED_ALPHABET`: a constant says what it limits, and of what ("foreign" is ambiguous: foreign to whom?) |
 | `MIN_LETTERS_OF_AN_UNEXPECTED_ALPHABET = 2` (checked with `>=`) | `UNEXPECTED_LETTERS_TOLERANCE = 1` (checked with `>`): when a limit says how much the code lets through, "tolerance" fits better than "min". Pick the word that fits what the constant does |
 | `LineVerdict.check` | `LineVerdict.decided_by`: a field says its role, not just a topic |
+
+**Name the exact kind of thing. Don't be ambiguous when you could be specific.**
+**Why:** A broad word (`language`, `foreign`, `other`) fits many things, so the reader has to work out which one the code means. A specific word answers that where the code is read.
+**How to apply:** When a name could mean several things, add the word that narrows it. Examples (evaluation-api `line_language_check.py`):
+- `other_language` → `other_han_language`. It only ever means the other Han language: Chinese in a Japanese answer, Japanese in a Chinese one. The same goes for `_find_other_language_characters_failure` → `_find_other_han_language_characters_failure` and `_characters_used_only_in` → `_han_characters_used_only_in`.
+- `foreign_alphabet` (in code we name) → `unexpected_alphabet`: foreign to whom? The outside key `reason="foreign_alphabet"` stays (see "Keep names in an outside contract").
+- `_CHARACTERS_USED_ONLY_IN` → `_HAN_CHARACTERS_USED_ONLY_BY_LANGUAGE`, and `_REASON_OF_…` → `_FINDING_KIND_BY_HAN_LANGUAGE`: say which characters, and which kind of reason.
 
 **Name functions for what they do in the problem. A generic verb is fine when it fits the work and has an object.**
 **Why:** `accept`, `observe`, `process`, `handle`, `finish`, `start` on their own say that something happens, not what. The reader has to open the function to find out. We don't hate generic verbs. The verb has to fit what the function really does, and it needs an object that says what it works on.
