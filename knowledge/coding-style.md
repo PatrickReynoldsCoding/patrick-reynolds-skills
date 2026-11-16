@@ -32,7 +32,7 @@ In a stack of PRs, make the rename in the lowest PR that adds the name, then reb
 **Extract logic into well-named helper functions before they get long.**
 **Why:** Long functions are hard to test in isolation and obscure intent. We want to read a method from top to bottom and get a high-level idea of what it does. A test: try to explain the function in a couple of sentences. The lines of the function should be those sentences.
 **How to apply:** If a block of logic inside a function has a clear purpose, pull it into a private helper with a name that says what it does. A loop that searches for one answer is a good sign: give it a name and return the answer. The calling function then reads as a list of its steps.
-**But don't wrap a step that is basic and obvious.** Group logic that is hard to explain into well-named functions. A step the reader understands at once, such as one `del`, stays inline, because a helper there hides a trivial line behind a name and makes the reader jump to it.
+**But don't wrap a step that is basic and obvious, and obvious means the reader knows what it does AND why.** Group logic that is hard to explain into well-named functions. A step the reader understands at once stays inline, because a helper there hides a trivial line behind a name and makes the reader jump to it. But simple code is not always clear code: a one-line `del` is easy to read, and the reader still can't tell why it is there. When the reason for a step isn't clear from the code, give the step a well-named function. The name carries the reason, so the reader doesn't have to guess it.
 
 Example (evaluation-api `line_language_check.py`). Before, one function did three things inline:
 ```python
@@ -71,21 +71,21 @@ def _detect_script_from_unicode_range(code_point: int) -> Optional[str]:
 ```
 Follow the naming pattern the code already uses (here Patrick's `detect_script_from_…`), so related helpers read as a family.
 
-Example of the other side (evaluation-api `line_language_check.py`). A helper for one obvious step was inlined:
+Example of the other side (evaluation-api `line_language_check.py`). The same step, one `del` of Latin, was inlined and then given a name again, because the code never said why Latin is removed:
 ```python
-# before: a named helper for a copy and one delete
-letters_to_judge = letters_outside if expected_answer_is_latin else _without_latin_left_to_the_word_check(letters_outside)
+# inlined: simple, but a reader can't tell why Latin is removed
+unexpected_letter_count_by_script: Counter = _count_letters_outside_the_expected_alphabets(...)
+del unexpected_letter_count_by_script["latin"]
 
-def _without_latin_left_to_the_word_check(letters_outside_the_expected_alphabets: Counter) -> Counter:
-    letters_without_latin = Counter(letters_outside_the_expected_alphabets)
+# named: the name says what is removed, and the helper is the one place to explain it
+return _remove_latin_from_word_count(letters_outside_the_expected_alphabets)
+
+def _remove_latin_from_word_count(letter_count_by_script: Counter) -> Counter:
+    letters_without_latin = Counter(letter_count_by_script)
     del letters_without_latin["latin"]
     return letters_without_latin
-
-# after: one line, clear at a glance
-del unexpected_letter_count_by_script["latin"]
 ```
-The same function does have a step worth a name: the three-part "this line was left untranslated" condition became its own finder, `_find_untranslated_line_failure`, so `_find_alphabet_failure` reads as a short list of the rules it applies.
-
+Why Latin goes: in an Arabic, Hindi, Japanese or Chinese answer, Latin words (names, abbreviations) are normal and are judged later by the word check. Only a named step can say that. A bare `del` can't.
 **When refactoring a branch's diff, only touch code the branch actually added or changed — never pre-existing code the branch didn't touch, even in the same function.**
 **Why:** Confirmed across a 4-repo refactor pass (ask-imanage-api/queue/search-agent/llm-service, 2026-07-08): scope creep into untouched code mixes unrelated changes into the PR, makes the diff unreviewable/unattributable, and risks regressions in code nobody asked to change. It's also fine — expected, even — to find zero extraction-worthy blocks in a branch; don't manufacture extractions just to have something to show.
 **How to apply:** Run `git diff <base>..<branch>` first and scope all extraction candidates to the actual diff hunks. If an extraction-worthy block sits right next to untouched code in the same function, leave the untouched part alone even if it looks improvable. If an extracted helper has only one call site, make it a local nested function rather than a class/object-level method; promote to object-level only when genuinely reused by multiple call sites in the same file.
