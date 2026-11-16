@@ -128,6 +128,7 @@ Why Latin goes: in an Arabic, Hindi, Japanese or Chinese answer, Latin words (na
 | `best`, `code`, `char` | `most_likely`, `language_code`, `character`: no abbreviations |
 | `longest`, `run` | `longest_run`, `current_run` |
 | `MIN_FOREIGN_LETTERS` | `MIN_LETTERS_OF_A_FOREIGN_ALPHABET`: a constant says what it limits, and of what |
+| `MIN_LETTERS_OF_AN_UNEXPECTED_ALPHABET = 2` (checked with `>=`) | `UNEXPECTED_LETTERS_TOLERANCE = 1` (checked with `>`): when a limit says how much the code lets through, "tolerance" fits better than "min". Pick the word that fits what the constant does |
 | `LineVerdict.check` | `LineVerdict.decided_by`: a field says its role, not just a topic |
 
 **Name functions for what they do in the problem. A generic verb is fine when it fits the work and has an object.**
