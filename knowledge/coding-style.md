@@ -274,6 +274,19 @@ class LineDetail:
 **Why:** Swapping implementations (for tests, different backends, staged rollouts) requires no call-site changes when the interface is stable.
 **How to apply:** Define a trait for every service with the public contract. Put the implementation in a separate (often private) class. Expose a factory or layer in a companion object. Callers reference only the trait.
 
+**A class that implements an interface says so: it extends the interface or protocol by name.**
+**Why:** The reader sees which contract the class fills without searching for a caller, and the type checker verifies that every method is there. It is the same habit as `class Impl extends Trait` in Scala. Matching a protocol by shape alone hides that link.
+**How to apply:** Name the interface in the class definition, for the real class and for a fake in a test. Example (evaluation-api `line_language_check.py`, with `LanguageDetector` a `Protocol`):
+```python
+# not this
+class LinguaLanguageDetector:
+class FakeDetector:
+
+# this
+class LinguaLanguageDetector(LanguageDetector):
+class FakeDetector(LanguageDetector):
+```
+
 ## Python
 
 **Always use Pydantic over Python's `dataclasses`.**
