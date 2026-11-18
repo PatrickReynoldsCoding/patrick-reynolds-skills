@@ -19,7 +19,7 @@ Only then start to refactor.
 - **Budget:** a small cost for a clear readability gain is fine. Making the scanner immutable cost about 5–8% (87 → 94 ms) with identical output, and that was accepted. If a step costs more than that, or memory grows with the input when it didn't before, stop and report the numbers before you go on.
 
 **Write down why each tuned value is what it is, in a README next to the code, and link to it from the constant.**
-**Why:** A threshold picked by measuring (a confidence bar, a minimum length) looks arbitrary in the code. Without the evidence, the next person can't tell whether it is safe to change, and the numbers get argued again.
+**Why:** A threshold picked by measuring (a fraud score limit, a minimum length) looks arbitrary in the code. Without the evidence, the next person can't tell whether it is safe to change, and the numbers get argued again.
 **How to apply:** For each tuned value, the README says:
 - the rule in plain words;
 - the data it was measured on;
@@ -27,9 +27,9 @@ Only then start to refactor.
 - what goes wrong on each side (false fails, false passes);
 - why this value.
 
-The constant gets a one-line comment with the link: `MIN_CONFIDENCE = 0.90  # see README.md#confidence-bar`. Other comments and docs name the constant, not its number ("at or above `MIN_CONFIDENCE`"), so they don't go stale when it changes.
+The constant gets a one-line comment with the link: `FRAUD_SCORE_LIMIT = 0.90  # see README.md#fraud-score-limit`. Other comments and docs name the constant, not its number ("at or above `FRAUD_SCORE_LIMIT`"), so they don't go stale when it changes.
 When you find a value with no reason given, ask Patrick whether to check that it is the best value (if nobody has yet) and write it up in the README.
-Before changing a tuned value, run it on real data and list what changes on both sides: the new false fails and the new false passes. Also check the inputs near the new value that aren't in your sample (for a word-frequency bar, the common words just under it). Real runs show only what they happen to contain.
+Before changing a tuned value, run it on real data and list what changes on both sides: the new false fails and the new false passes. Also check the inputs near the new value that aren't in your sample (for a fraud score limit, the common payments that score just under it). Real runs show only what they happen to contain.
 
 **When there are several reasonable designs, build each one on its own branch and compare them.**
 **Why:** Opinions about which design reads best are cheap to test and expensive to argue about. Real code and real numbers settle it.
@@ -38,7 +38,7 @@ Before changing a tuned value, run it on real data and list what changes on both
 **Do renames in their own commit, before structural changes.**
 **Why:** A rename-only commit is easy to review: nothing changes except names. Mixed into a restructure, it hides the real change.
 **How to apply:** Commit the renames first, then move code into new files or types. If Patrick renamed something, keep his name. He did it for a reason.
-In a stack of PRs, make the rename in the lowest PR that adds the name, then rebase the PRs above it and run the tests on each. Leave a name that later PRs import (e.g. `script_of`) for a separate rename across the whole stack, so one PR's rename doesn't break the next.
+In a stack of PRs, make the rename in the lowest PR that adds the name, then rebase the PRs above it and run the tests on each. Leave a name that later PRs import (e.g. `total_of`) for a separate rename across the whole stack, so one PR's rename doesn't break the next.
 
 ## General — best practices & style (all languages)
 
@@ -47,65 +47,57 @@ In a stack of PRs, make the rename in the lowest PR that adds the name, then reb
 **How to apply:** If a block of logic inside a function has a clear purpose, pull it into a private helper with a name that says what it does. A loop that searches for one answer is a good sign: give it a name and return the answer. The calling function then reads as a list of its steps.
 **But don't wrap a step that is basic and obvious, and obvious means the reader knows what it does AND why.** Group logic that is hard to explain into well-named functions. A step the reader understands at once stays inline, because a helper there hides a trivial line behind a name and makes the reader jump to it. But simple code is not always clear code: a one-line `del` is easy to read, and the reader still can't tell why it is there. When the reason for a step isn't clear from the code, give the step a well-named function. The name carries the reason, so the reader doesn't have to guess it.
 
-Example (evaluation-api `line_language_check.py`). Before, one function did three things inline:
+Example. Before, one function did three things inline:
 ```python
-def detect_script_from_char(character: str) -> Optional[str]:
-    unicode_category = unicodedata.category(character)
-    if not _is_letter(unicode_category):
+def shipping_cost_from_order(order: Order) -> Optional[Decimal]:
+    if not _is_shippable(order):
         return None
-    code_point = ord(character)
-    for first_code_point, last_code_point, script in _SCRIPT_RANGES:
-        if first_code_point <= code_point <= last_code_point:
-            return script
-    ...
-    unicode_name = unicodedata.name(character, "")
-    if "LATIN" in unicode_name or "ORDINAL INDICATOR" in unicode_name:
-        return "latin"
-    return unicode_name.split(" ", 1)[0].lower() or "other"
+    for max_weight_kg, cost in _COST_BY_WEIGHT_BAND:
+        if order.weight_kg <= max_weight_kg:
+            return cost
+    return _FREIGHT_RATE_PER_KG * order.weight_kg
 ```
 After, each step has a name, and the top function reads as the order of the steps:
 ```python
-def detect_script_from_char(character: str) -> Optional[str]:
-    unicode_category = unicodedata.category(character)
-    if not _is_letter(unicode_category):
+def shipping_cost_from_order(order: Order) -> Optional[Decimal]:
+    if not _is_shippable(order):
         return None
-    script_from_range = _detect_script_from_unicode_range(ord(character))
-    if script_from_range is not None:
-        return script_from_range
-    ...
-    return _detect_script_from_unicode_name(character)
+    cost_from_band = _shipping_cost_from_weight_band(order.weight_kg)
+    if cost_from_band is not None:
+        return cost_from_band
+    return _shipping_cost_from_freight_rate(order.weight_kg)
 
 
-def _detect_script_from_unicode_range(code_point: int) -> Optional[str]:
-    for first_code_point, last_code_point, script in _SCRIPT_RANGES:
-        if first_code_point <= code_point <= last_code_point:
-            return script
+def _shipping_cost_from_weight_band(weight_kg: Decimal) -> Optional[Decimal]:
+    for max_weight_kg, cost in _COST_BY_WEIGHT_BAND:
+        if weight_kg <= max_weight_kg:
+            return cost
     return None
 ```
-Follow the naming pattern the code already uses (here Patrick's `detect_script_from_…`), so related helpers read as a family.
+Follow the naming pattern the code already uses (here `shipping_cost_from_…`), so related helpers read as a family.
 
-Example of the other side (evaluation-api `line_language_check.py`). The same step, one `del` of Latin, was inlined and then given a name again, because the code never said why Latin is removed:
+Example of the other side. The same step, one `del` of gift cards, was inlined and then given a name again, because the code never said why gift cards are removed:
 ```python
-# inlined: simple, but a reader can't tell why Latin is removed
-unexpected_letter_count_by_script: Counter = _count_letters_outside_the_expected_alphabets(...)
-del unexpected_letter_count_by_script["latin"]
+# inlined: simple, but a reader can't tell why gift cards are removed
+spend_by_category: Counter = _spend_by_category(order.items)
+del spend_by_category["gift_card"]
 
 # named: the name says what is removed, and the helper is the one place to explain it
-return _remove_latin_from_word_count(letters_outside_the_expected_alphabets)
+return _remove_gift_cards_from_discountable_spend(spend_by_category)
 
-def _remove_latin_from_word_count(letter_count_by_script: Counter) -> Counter:
-    letters_without_latin = Counter(letter_count_by_script)
-    del letters_without_latin["latin"]
-    return letters_without_latin
+def _remove_gift_cards_from_discountable_spend(spend_by_category: Counter) -> Counter:
+    spend_without_gift_cards = Counter(spend_by_category)
+    del spend_without_gift_cards["gift_card"]
+    return spend_without_gift_cards
 ```
-Why Latin goes: in an Arabic, Hindi, Japanese or Chinese answer, Latin words (names, abbreviations) are normal and are judged later by the word check. Only a named step can say that. A bare `del` can't.
+Why gift cards go: a gift card is money paid in advance, not a purchase, so a percentage off it gives money away. Only a named step can say that. A bare `del` can't.
 **When refactoring a branch's diff, only touch code the branch actually added or changed — never pre-existing code the branch didn't touch, even in the same function.**
-**Why:** Confirmed across a 4-repo refactor pass (ask-imanage-api/queue/search-agent/llm-service, 2026-07-08): scope creep into untouched code mixes unrelated changes into the PR, makes the diff unreviewable/unattributable, and risks regressions in code nobody asked to change. It's also fine — expected, even — to find zero extraction-worthy blocks in a branch; don't manufacture extractions just to have something to show.
+**Why:** Confirmed across a refactor pass over four repos: scope creep into untouched code mixes unrelated changes into the PR, makes the diff unreviewable/unattributable, and risks regressions in code nobody asked to change. It's also fine — expected, even — to find zero extraction-worthy blocks in a branch; don't manufacture extractions just to have something to show.
 **How to apply:** Run `git diff <base>..<branch>` first and scope all extraction candidates to the actual diff hunks. If an extraction-worthy block sits right next to untouched code in the same function, leave the untouched part alone even if it looks improvable. If an extracted helper has only one call site, make it a local nested function rather than a class/object-level method; promote to object-level only when genuinely reused by multiple call sites in the same file.
 
 **Separate orchestration from computation — callers own the wiring.**
 **Why:** Functions that do their own data fetching/transformation AND computation are hard to unit-test.
-**How to apply:** e.g. `get_retrieval_scores` takes `List[RetrievalData]`; the caller calls `get_retrieval_data` first. Each function does one thing.
+**How to apply:** e.g. `get_invoice_totals` takes `List[Invoice]`; the caller calls `load_invoices` first. Each function does one thing.
 
 **A function that only applies to some inputs shouldn't accept the others and return a dummy answer. The caller decides when to call it.**
 **Why:** `return False` for an input the function doesn't apply to looks like a real answer ("no"), when it means "not asked". Readers and tests then have to cover cases that mean nothing.
@@ -123,7 +115,7 @@ vat = vat_due(order) if order.region == "EU" else None
 
 **Separate pure computation from I/O — pure functions are testable and composable.**
 **Why:** Pure functions (no side effects, deterministic inputs/outputs) are easier to test, reason about, and reuse. I/O is a separate concern.
-**How to apply:** Extract pure logic (e.g., `_apply_sbt_version_to_lines()` takes lines, returns updated lines) from I/O wrappers (e.g., `update_sbt_version()` reads file, calls pure function, writes result).
+**How to apply:** Extract pure logic (e.g., `_apply_discount_to_prices()` takes prices, returns discounted prices) from I/O wrappers (e.g., `update_price_list()` reads file, calls pure function, writes result).
 
 **Never weaken a type with optional/nullable defaults to paper over missing test data — fix the test data instead.**
 **Why:** Weakening a model's type to avoid updating a fixture hides a real design problem.
@@ -131,10 +123,10 @@ vat = vat_due(order) if order.region == "EU" else None
 
 **Replace if-elif/switch chains with lookup tables (maps/dicts).**
 **Why:** Branch chains are verbose, error-prone to extend, and often have subtle bugs (e.g. string transformations applied before comparison).
-**How to apply:** Module-level maps with descriptive names replace chains cleanly. Name a map `<VALUE>_BY_<KEY>` (`LINGUA_LANGUAGE_BY_CODE`, `_OTHER_HAN_LANGUAGE_BY_LANGUAGE`) or `<KEY>_TO_<VALUE>` (`_ENV_SUFFIX_TO_DISPLAY_NAME`), so a lookup reads as a sentence: `_OTHER_HAN_LANGUAGE_BY_LANGUAGE["ja"]`.
+**How to apply:** Module-level maps with descriptive names replace chains cleanly. Name a map `<VALUE>_BY_<KEY>` (`COUNTRY_NAME_BY_CODE`, `_VAT_RATE_BY_COUNTRY`) or `<KEY>_TO_<VALUE>` (`_STATUS_TO_LABEL`), so a lookup reads as a sentence: `_VAT_RATE_BY_COUNTRY["DE"]`.
 
 **No single-character variable names — everything must be descriptive.**
-**Why:** Code is read far more than written. `recorded_version` vs `candidate_version` is immediately clear; `a` vs `b` requires context-switching.
+**Why:** Code is read far more than written. `billing_address` vs `delivery_address` is immediately clear; `a` vs `b` requires context-switching.
 **How to apply:** Use semantic names that explain the variable's purpose. Loop indices where context is obvious (e.g., `for i in range(10)`) are acceptable; data variables always get full names.
 
 **Name things for what they are in the problem, not for their role in the algorithm.**
@@ -143,58 +135,58 @@ vat = vat_due(order) if order.region == "EU" else None
 
 | Generic | Says what it is |
 |---|---|
-| `pending` | `waitingLines` |
-| `bucket` | `bestMatchesPerPattern` |
-| `capacity` | `matchesToKeepPerPattern` |
-| `tokens` (a parameter) | `documentTokens` |
-| `firstPos`, `prevEnd` | `positionOfFirstReadLine`, `endOfLastReadLine` |
-| `hasPhrase` | `anyPhraseQuery` (a boolean reads as a question about the input) |
-| `text` (after URLs were removed) | `text_without_urls`: say what has already been done to the value |
-| `count`, `characters` | `letter_count`, `distinct_characters`: say what is counted or collected |
-| `start, end` (a range) | `first_code_point, last_code_point` |
-| `best`, `code`, `char` | `most_likely`, `language_code`, `character`: no abbreviations |
+| `pending` | `ordersWaitingForCourier` |
+| `bucket` | `cheapestQuotesPerSupplier` |
+| `capacity` | `quotesToKeepPerSupplier` |
+| `items` (a parameter) | `basketItems` |
+| `firstTime`, `prevEnd` | `timeOfFirstOrder`, `endOfLastDelivery` |
+| `hasExpress` | `anyExpressOrder` (a boolean reads as a question about the input) |
+| `postcode` (after spaces were removed) | `postcode_without_spaces`: say what has already been done to the value |
+| `count`, `customers` | `order_count`, `distinct_customers`: say what is counted or collected |
+| `start, end` (a range) | `first_delivery_day, last_delivery_day` |
+| `best`, `code`, `qty` | `cheapest_quote`, `currency_code`, `quantity`: no abbreviations |
 | `longest`, `run` | `longest_run`, `current_run` |
-| `MIN_FOREIGN_LETTERS` | `MIN_LETTERS_OF_AN_UNEXPECTED_ALPHABET`: a constant says what it limits, and of what ("foreign" is ambiguous: foreign to whom?) |
-| `MIN_LETTERS_OF_AN_UNEXPECTED_ALPHABET = 2` (checked with `>=`) | `UNEXPECTED_LETTERS_TOLERANCE = 1` (checked with `>`): when a limit says how much the code lets through, "tolerance" fits better than "min". Pick the word that fits what the constant does |
-| `LineVerdict.check` | `LineVerdict.decided_by`: a field says its role, not just a topic |
+| `MIN_DAYS` | `MIN_LATE_DAYS_TO_REFUND`: a constant says what it limits, and of what ("days" is ambiguous: days of what?) |
+| `MIN_LATE_DAYS_TO_REFUND = 2` (checked with `>=`) | `LATE_DAYS_TOLERANCE = 1` (checked with `>`): when a limit says how much the code lets through, "tolerance" fits better than "min". Pick the word that fits what the constant does |
+| `FraudVerdict.check` | `FraudVerdict.decided_by`: a field says its role, not just a topic |
 
 **Name the exact kind of thing. Don't be ambiguous when you could be specific.**
-**Why:** A broad word (`language`, `foreign`, `other`) fits many things, so the reader has to work out which one the code means. A specific word answers that where the code is read.
-**How to apply:** When a name could mean several things, add the word that narrows it. Examples (evaluation-api `line_language_check.py`):
-- `other_language` → `other_han_language`. It only ever means the other Han language: Chinese in a Japanese answer, Japanese in a Chinese one. The same goes for `_find_other_language_characters_failure` → `_find_other_han_language_characters_failure` and `_characters_used_only_in` → `_han_characters_used_only_in`.
-- `foreign_alphabet` (in code we name) → `unexpected_alphabet`: foreign to whom? The outside key `reason="foreign_alphabet"` stays (see "Keep names in an outside contract").
-- `_CHARACTERS_USED_ONLY_IN` → `_HAN_CHARACTERS_USED_ONLY_BY_LANGUAGE`, and `_REASON_OF_…` → `_FINDING_KIND_BY_HAN_LANGUAGE`: say which characters, and which kind of reason.
+**Why:** A broad word (`address`, `bad`, `days`) fits many things, so the reader has to work out which one the code means. A specific word answers that where the code is read.
+**How to apply:** When a name could mean several things, add the word that narrows it. Examples:
+- `address` → `delivery_address`. It only ever means where the parcel goes, never where the bill goes. The same goes for `_find_address_failure` → `_find_delivery_address_failure`.
+- `bad_card` (in code we name) → `expired_card`: bad how? The outside key `reason="bad_card"` stays (see "Keep names in an outside contract").
+- `_DAYS` → `_DELIVERY_DAYS_BY_REGION`, and `_REASON_OF_…` → `_REFUND_REASON_BY_DELAY`: say which days, and which kind of reason.
 - When a thing only applies to some inputs, say where in its name: `MISSING_VAT_NUMBER` → `MISSING_VAT_NUMBER_IN_EU_INVOICE`. The reader then knows where it applies without reading the code. A name that applies everywhere stays short.
 
 **Name functions for what they do in the problem. A generic verb is fine when it fits the work and has an object.**
 **Why:** `accept`, `observe`, `process`, `handle`, `finish`, `start` on their own say that something happens, not what. The reader has to open the function to find out. We don't hate generic verbs. The verb has to fit what the function really does, and it needs an object that says what it works on.
-**How to apply:** Use a verb and the thing it acts on: `accept(line)` → `scoreLine(line)`; `observe(line)` → `showToMatchersAndWait(line)`; `acceptOldest` → `scoreFirstWaitingLine`; `finish` → `closeLastMatches`; `start(...)` → `newScanState(...)`. The same goes for a name that only says what comes back: `script_of(character)` → `detect_script_from_char(character)`, a more descriptive name that says what the function does and what it gets.
-Example of a verb that did not fit (evaluation-api `line_language_check.py`): `check_line(line, expected_language, detector)` → `evaluate_line_language(...)`. "Check" sounds like one quick yes/no look, but the function weighs a lot of information in the line (its alphabets, the characters only one language uses, the language detector) and returns a verdict. "Evaluate" fits that, and it is the word the repo already uses (`evaluate_language_adherence`). The helpers follow: `_check_lines` → `_evaluate_lines_language`, `_check_with_detector` → `_evaluate_line_language_with_detector`.
+**How to apply:** Use a verb and the thing it acts on: `accept(order)` → `reserveStock(order)`; `observe(payment)` → `matchPaymentToInvoice(payment)`; `acceptOldest` → `shipOldestWaitingOrder`; `finish` → `closeDayBatch`; `start(...)` → `newDayBatch(...)`. The same goes for a name that only says what comes back: `total_of(order)` → `calculate_total_from_order(order)`, a more descriptive name that says what the function does and what it gets.
+Example of a verb that did not fit: `check_order(order, customer, fraud_model)` → `assess_fraud_risk(...)`. "Check" sounds like one quick yes/no look, but the function weighs a lot of information about the order (its amount, the address history, the fraud model) and returns a verdict. "Assess" fits that, and it is the word the repo already uses (`assess_credit_risk`). The helpers follow: `_check_items` → `_assess_items_fraud_risk`, `_check_with_model` → `_assess_fraud_risk_with_model`.
 
 **Name every intermediate value, lambda parameter and destructured tuple.**
 **Why:** In a fold or a recursive loop, the reader has to know at each step what the value is now. `acc`, `x`, `(a, b)` and `current` hide that.
 **How to apply:**
-- Fold accumulators and results: `lastState` → `stateAfterLastLine`; `observed` → `stateWithLineWaiting`.
-- Lambda parameters: `(previous, x)` → `(scanState, currentLine)`.
-- Destructured tuples: `val (oldest, rest) = queue.dequeue` → `val (firstLineInQueue, restOfQueue) = ...`.
-- Recursive-loop parameters: `from(index, current, bucket)` → `moveFrom(matcherIndex, matchersSoFar, bestMatchesSoFar)`.
-- Values inside a step: `ranking` / `nextRanking` → `patternBestMatches` / `updatedPatternBestMatches`.
+- Fold accumulators and results: `lastState` → `batchAfterLastOrder`; `added` → `batchWithOrderWaiting`.
+- Lambda parameters: `(previous, x)` → `(dayBatch, currentOrder)`.
+- Destructured tuples: `val (oldest, rest) = queue.dequeue` → `val (firstOrderInQueue, restOfQueue) = ...`.
+- Recursive-loop parameters: `from(index, current, bucket)` → `assignFrom(vanIndex, vansSoFar, parcelsPerVanSoFar)`.
+- Values inside a step: `ranking` / `nextRanking` → `supplierCheapestQuotes` / `updatedSupplierCheapestQuotes`.
 
 **Give a bare condition or literal a name: a small helper or a constant.**
-**Why:** `category.startswith("L")` or `category == "Lm"` makes the reader stop and work out what "L" means. A name answers that where the code is read.
-**How to apply:** Wrap the check in a helper named for the question it answers, and put the literal in a named constant: `if not _is_letter(unicode_category)`, with `_LETTER_CATEGORY_PREFIX = "L"` and `_MODIFIER_LETTER_CATEGORY = "Lm"`. If a reviewer asks "why do we check X?", the answer is usually a missing name.
+**Why:** `card_number.startswith("4")` or `card_number[:2] in ("34", "37")` makes the reader stop and work out what "4" means. A name answers that where the code is read.
+**How to apply:** Wrap the check in a helper named for the question it answers, and put the literal in a named constant: `if not _is_visa(card_number)`, with `_VISA_PREFIX = "4"` and `_AMEX_PREFIXES = ("34", "37")`. If a reviewer asks "why do we check X?", the answer is usually a missing name.
 
 **Keep names in an outside contract when you rename the code behind it.**
 **Why:** An API response key, a JSON field or a stored column is read by other code (a dashboard, another repo). Renaming it breaks them.
-**How to apply:** Rename the internal field and keep the external key: `LineVerdict.decided_by` is still written as `"check"` in `line_analysis`. Say so in the commit message.
-Keep the outside key only when someone already reads it. While the contract is new and nothing outside reads it yet, rename the value with the name, so the code and the output say the same thing: `FOREIGN_WORD = "foreign_word"` → `FOREIGN_WORD_IN_ENGLISH_ANSWER = "foreign_word_in_english_answer"`.
+**How to apply:** Rename the internal field and keep the external key: `FraudVerdict.decided_by` is still written as `"check"` in `fraud_report`. Say so in the commit message.
+Keep the outside key only when someone already reads it. While the contract is new and nothing outside reads it yet, rename the value with the name, so the code and the output say the same thing: `LATE = "late"` → `LATE_AFTER_PROMISED_DAY = "late_after_promised_day"`.
 
 **Don't add a parameter until a caller passes it, and don't give it a do-nothing default.**
-**Why:** An unused parameter with an identity default (`without_kept_as_written=_nothing_kept_as_written`) makes the reader look for a caller that doesn't exist, and asks "why is this here?".
+**Why:** An unused parameter with an identity default (`apply_discount=_no_discount`) makes the reader look for a caller that doesn't exist, and asks "why is this here?".
 **How to apply:** Add the parameter in the change (or the PR in a stack) where the first caller passes it. If every caller passes it, make it required. Remove the default function too.
 
 **Use one word for one idea, and pick the word the users of the code see.**
-**Why:** When the code says "fragment" and the API says "snippet" for the same thing, readers wonder whether they are two things.
+**Why:** When the code says "basket" and the API says "cart" for the same thing, readers wonder whether they are two things.
 **How to apply:** Choose the word from the public API or the product, and use it in type names, fields, functions, test names and comments. Keep a library's own word only where you talk about that library, e.g. "a port of Lucene's `mergeContiguousFragments`".
 The same goes for values. When two checks mean the same thing, they use one constant, not two numbers that happen to be close:
 ```python
@@ -208,30 +200,30 @@ ADULT_AGE = 18
 Two numbers for one idea drift apart, and the reader has to ask why they differ.
 
 **Use named arguments when a call has several values of the same type, or values whose meaning isn't clear from the call.**
-**Why:** `rank(tokens, 1200, 100, 4, queries)` can't be checked by reading it. Named arguments make a wrong order visible.
-**How to apply:** `scan(documentLines = lines, textLength = text.length, matchesToKeepPerPattern = shown + 1, patterns = patterns)`. Also put each parameter on its own line when the signature doesn't fit on one line.
+**Why:** `bookDelivery(parcels, 1200, 100, 4, couriers)` can't be checked by reading it. Named arguments make a wrong order visible.
+**How to apply:** `bookDelivery(parcels = parcels, maxWeightGrams = 1200, maxLengthCm = 100, quotesToCompare = 4, couriers = couriers)`. Also put each parameter on its own line when the signature doesn't fit on one line.
 
 **Don't add comments to code, config or workflow files. Explain with names instead.**
-**Why:** The team removes comments in review because they go stale (2026-10-05: a reviewer flagged them on sidewinder#79, Patrick asked for all added comments to be stripped from every CIN-4044 PR, and extract-common already had a "Remove added explanatory comments" commit). A comment that explains the code usually means a name is missing. The reasoning belongs in the commit message and the PR description, which don't rot alongside the code.
+**Why:** Comments get removed in review because they go stale: reviewers flag them, and added comments have been stripped from whole sets of PRs. A comment that explains the code usually means a name is missing. The reasoning belongs in the commit message and the PR description, which don't rot alongside the code.
 **How to apply:**
 - Write no new `#` / `//` comments, including inline trailing ones such as `# CVE-…` on a dependency pin or `# TEMPORARY` markers. When a comment seems needed, first try a clearer name, a small named helper or a named constant (see "Give a bare condition or literal a name").
 - Put the reasoning in the commit message or the PR body.
 - When editing a line that already carries a comment, don't rewrite the comment text. Leave existing comments the change doesn't touch alone.
 - **The one exception:** outside knowledge the code depends on and no name can carry, such as a standard, a spec or a data format, or very niche knowledge. Write a short comment, with a link to the source where there is one (it is nice to have, but don't overdo it). Examples:
-  - Asked for by Patrick in evaluation-api#78: the Unicode general categories behind `_is_letter`, with `https://www.unicode.org/reports/tr44/#General_Category_Values`.
-  - Niche knowledge (evaluation-api `line_language_check.py`): `_MODIFIER_LETTER_CATEGORY = "Lm"  # Such as: ʰ (Modifier Letter Small H), ˈ (Modifier Letter Vertical Line), ˢ (Modifier Letter Small S)`. A reader can't guess what a modifier letter looks like from the name.
+  - A standard: the card number prefixes behind `_is_visa`, with `https://en.wikipedia.org/wiki/Payment_card_number`.
+  - Niche knowledge: `_AMEX_PREFIXES = ("34", "37")  # Such as: 3782 822463 10005 (a public test card number)`. A reader can't guess what an Amex card number looks like from the name.
 
 **Use sealed error type hierarchies, not string messages.**
 **Why:** Strings can't be pattern-matched exhaustively; a sealed hierarchy forces callers to handle every case and keeps error context structured.
-**How to apply:** Define a sealed trait (or enum) as the root error type, with specific case classes for each failure mode carrying relevant fields (e.g. `MCPError(tool: String, message: String, cause: Option[Throwable])`). Wire errors through the type system, not exception messages.
+**How to apply:** Define a sealed trait (or enum) as the root error type, with specific case classes for each failure mode carrying relevant fields (e.g. `PaymentError(provider: String, message: String, cause: Option[Throwable])`). Wire errors through the type system, not exception messages.
 
 **Put one idea in each file, and give each file one test file with the same name.**
-**Why:** A reader who wants "how are matches ranked?" opens one file. A 600-line file with four ideas makes them scroll and guess.
-**How to apply:** When a file holds several separate ideas (input types, the per-kind matchers, the result types, the main loop), move them into a package with one file per idea, and the main entry point in a file named after it. Mirror the layout in the tests: `Matchers.scala` → `MatchersTest.scala`. Put example data shared by the tests in one `<Package>TestData` file. Don't use names like `ExampleTest`: a test file is named after the code it tests.
+**Why:** A reader who wants "how are discounts applied?" opens one file. A 600-line file with four ideas makes them scroll and guess.
+**How to apply:** When a file holds several separate ideas (input types, the per-kind discounts, the result types, the main loop), move them into a package with one file per idea, and the main entry point in a file named after it. Mirror the layout in the tests: `Discounts.scala` → `DiscountsTest.scala`. Put example data shared by the tests in one `<Package>TestData` file. Don't use names like `ExampleTest`: a test file is named after the code it tests.
 
 **Write tests that read like documentation of the behaviour.**
 **Why:** A good test name tells the reader the rule without them reading the code. A failing test then says which rule broke.
-**How to apply:** Name each test as a sentence about what the code does, using the domain words, e.g. `"keeps the earlier match when two matches score the same"`. Use small, real-looking inputs (a real sentence, not `"a b c"`). Group tests by the function they test (`suite("scoreLine")`), and cover private helpers through their package-private access.
+**How to apply:** Name each test as a sentence about what the code does, using the domain words, e.g. `"ships the older order first when two orders have the same priority"`. Use small, real-looking inputs (a real sentence, not `"a b c"`). Group tests by the function they test (`suite("reserveStock")`), and cover private helpers through their package-private access.
 Test one behaviour per test. A test named "does A, B, C and D" hides which one broke, and its expected value mixes all four:
 ```python
 # not this
@@ -284,13 +276,13 @@ class TestIsValidPostcode:
 A failure then reads `test_accepts_uk_postcodes[no space: SW1A1AA]`.
 
 **In a test, show the data the code works with.**
-**Why:** A reader of a test should see what data is involved without opening another file. `Counter({'arabic': 20, 'latin': 13})` says more than a call that builds it. Sometimes building the input with the real code shows more about how the function is used, and you can't have both.
-**How to apply:** Define the input object in full where you can (`letter_count = Counter({"arabic": 20, "latin": 13})`). When you build it with the real code because that shows the context, add a comment with the value it equals. That comment is a deliberate exception to the no-comment rule. Example (evaluation-api `test_line_language_check.py`):
+**Why:** A reader of a test should see what data is involved without opening another file. `Counter({'gift_card': 50, 'book': 20})` says more than a call that builds it. Sometimes building the input with the real code shows more about how the function is used, and you can't have both.
+**How to apply:** Define the input object in full where you can (`spend_by_category = Counter({"gift_card": 50, "book": 20})`). When you build it with the real code because that shows the context, add a comment with the value it equals. That comment is a deliberate exception to the no-comment rule. Example:
 ```python
-def test_latin_words_in_an_arabic_answer_are_left_to_the_word_check(self):
-    letter_count: Counter = count_letters_by_script("يدفع المشتري Purchase Price إلى البائع")
-    # Counter({'arabic': 20, 'latin': 13})
-    assert _find_unexpected_alphabet_failure(letter_count, frozenset({"arabic"})) is None
+def test_gift_cards_are_left_out_of_the_discount(self):
+    spend_by_category: Counter = spend_by_category_of([Item("book", 20), Item("gift_card", 50)])
+    # Counter({'gift_card': 50, 'book': 20})
+    assert discountable_spend(spend_by_category) == 20
 ```
 
 Don't put expected values in shared module constants (`DECLINED = PaymentResult(status="declined", retry=False)`) and reuse them across tests. Write the object out in each test, even when it repeats. The reader then sees the whole expected value where it is checked, without scrolling to the top of the file:
@@ -304,68 +296,68 @@ assert charge(card) == PaymentResult(status="declined", retry=False)
 
 **In a test, compare the whole expected object with the whole actual object.**
 **Why:** Reading `object.value` shows only part of the data. Comparing whole objects shows the reader the whole shape of the data involved, and the test checks every field, so a wrong field can't slip past.
-**How to apply:** Build `expected_<thing>` in full, call the code into `actual_<thing>`, and assert they are equal. Use a type that has equality (a case class, or a pydantic dataclass). Example (evaluation-api `test_line_language_check.py`):
+**How to apply:** Build `expected_<thing>` in full, call the code into `actual_<thing>`, and assert they are equal. Use a type that has equality (a case class, or a pydantic dataclass). Example:
 ```python
 # before
-verdict = _find_alphabet_failure(letter_count, "de")
-assert verdict.reason == "foreign_alphabet"
-assert verdict.detected_language == "han"
+verdict = assess_fraud_risk(order)
+assert verdict.reason == "card_country_mismatch"
+assert verdict.risk == "high"
 
 # after
-expected_verdict = LineVerdict(is_correct=False, decided_by="script", detected_language="han", reason="foreign_alphabet")
+expected_verdict = FraudVerdict(is_fraud=True, decided_by="rules", risk="high", reason="card_country_mismatch")
 
-actual_verdict = _find_alphabet_failure(letter_count, "de")
+actual_verdict = assess_fraud_risk(order)
 
 assert actual_verdict == expected_verdict
 ```
 
 **Annotate the type of every local variable.**
 **Why:** Type annotations are great, and we love them. The reader sees what a variable holds without opening the function on the right, and which values can be `None`.
-**How to apply:** Write the type even when the function on the right already declares it. Examples (evaluation-api): `letter_count_in_line_by_script: Counter = count_letters_by_script(text_without_urls)` and `verdict: Optional[LineVerdict] = check_line(line, expected_lang, detector)`.
+**How to apply:** Write the type even when the function on the right already declares it. Examples: `spend_by_category: Counter = spend_by_category_of(order.items)` and `verdict: Optional[FraudVerdict] = assess_fraud_risk(order)`.
 
 **Return a named type (a pydantic class), not a tuple or a dict.**
-**Why:** Seeing the shape of the data is always better, so a pydantic class is always better than a dict. A tuple's fields have no names, so the caller has to remember the order, and a reader of `lpr, accuracy, line_details, line_findings = ...` has to open the function to know what each one is. A `Dict[str, Any]` hides its shape too, and a misspelled key fails only at runtime. A named type shows the shape of the result where it is used, and adding a field doesn't break every caller.
-**How to apply:** When a function returns several values that belong together, return a frozen pydantic dataclass (or a case class) with one named field for each. Name the fields for what they hold, after the keys the result is later written under. If the result is also written out as a dict (an API response), give the class an `as_detail()` method and call it only at the edge, so the outside keys stay the same (see "Keep names in an outside contract"). Examples (evaluation-api `language_adherence_metrics.py`):
+**Why:** Seeing the shape of the data is always better, so a pydantic class is always better than a dict. A tuple's fields have no names, so the caller has to remember the order, and a reader of `subtotal, vat, shipping, discounts = ...` has to open the function to know what each one is. A `Dict[str, Any]` hides its shape too, and a misspelled key fails only at runtime. A named type shows the shape of the result where it is used, and adding a field doesn't break every caller.
+**How to apply:** When a function returns several values that belong together, return a frozen pydantic dataclass (or a case class) with one named field for each. Name the fields for what they hold, after the keys the result is later written under. If the result is also written out as a dict (an API response), give the class an `as_detail()` method and call it only at the edge, so the outside keys stay the same (see "Keep names in an outside contract"). Examples:
 ```python
 # before
-def analyze_line_level_adherence(self, answer: str, expected_language: str) -> Tuple[float, float, List[Dict], List[Finding]]:
+def price_order(order: Order) -> Tuple[Decimal, Decimal, Decimal, List[Discount]]:
     ...
-    return lpr, accuracy, line_details, line_findings
+    return subtotal, vat, shipping, discounts
 
-lpr, accuracy, line_details, line_findings = self.analyze_line_level_adherence(answer, expected_lang)
+subtotal, vat, shipping, discounts = price_order(order)
 
 # after
 @dataclass(frozen=True)
-class LineLevelAdherence:
-    line_level_pass_rate: float
-    accuracy: float
-    line_details: List[Dict[str, Any]]
-    line_findings: List[Finding]
+class OrderPrice:
+    subtotal: Decimal
+    vat: Decimal
+    shipping: Decimal
+    discounts: List[Discount]
 
-def analyze_line_level_adherence(self, answer: str, expected_language: str) -> LineLevelAdherence:
+def price_order(order: Order) -> OrderPrice:
     ...
-    return LineLevelAdherence(line_level_pass_rate=lpr, accuracy=accuracy, line_details=line_details, line_findings=line_findings)
+    return OrderPrice(subtotal=subtotal, vat=vat, shipping=shipping, discounts=discounts)
 
-line_level_adherence: LineLevelAdherence = self.analyze_line_level_adherence(answer, expected_lang)
+order_price: OrderPrice = price_order(order)
 ```
-The same goes for a dict. `_line_detail` built a `Dict[str, Any]`, and `evaluate_language_adherence` returned one. Both are now classes (`LineDetail`, `LanguageAdherenceResult`), and only the router turns them into the API dict:
+The same goes for a dict. `_invoice_line` built a `Dict[str, Any]`, and `build_invoice` returned one. Both are now classes (`InvoiceLine`, `Invoice`), and only the router turns them into the API dict:
 ```python
 # before
-detail: Dict[str, Any] = {"line_number": line_number, "line": line.strip(), ..., "check": verdict.decided_by.value}
-if verdict.confidence is not None:
-    detail["confidence"] = verdict.confidence
+line: Dict[str, Any] = {"line_number": line_number, "product": item.name, ..., "tax": item.vat_band.value}
+if item.discount is not None:
+    line["discount"] = item.discount
 
 # after
 @dataclass(frozen=True)
-class LineDetail:
+class InvoiceLine:
     line_number: int
-    line: str
-    decided_by: LineCheck  # written as "check"
-    confidence: Optional[float] = None
+    product: str
+    vat_band: VatBand  # written as "tax"
+    discount: Optional[Decimal] = None
 
     def as_detail(self) -> Dict[str, Any]: ...  # the same API dict as before
 
-[line_detail.as_detail() for line_detail in result.line_details]  # in the router
+[invoice_line.as_detail() for invoice_line in invoice.lines]  # in the router
 ```
 
 **Separate service interface from implementation — callers depend on the trait, not the class.**
@@ -374,22 +366,22 @@ class LineDetail:
 
 **A class that implements an interface says so: it extends the interface or protocol by name.**
 **Why:** The reader sees which contract the class fills without searching for a caller, and the type checker verifies that every method is there. It is the same habit as `class Impl extends Trait` in Scala. Matching a protocol by shape alone hides that link.
-**How to apply:** Name the interface in the class definition, for the real class and for a fake in a test. Example (evaluation-api `line_language_check.py`, with `LanguageDetector` a `Protocol`):
+**How to apply:** Name the interface in the class definition, for the real class and for a fake in a test. Example (with `PaymentGateway` a `Protocol`):
 ```python
 # not this
-class LinguaLanguageDetector:
-class FakeDetector:
+class CardPaymentGateway:
+class FakePaymentGateway:
 
 # this
-class LinguaLanguageDetector(LanguageDetector):
-class FakeDetector(LanguageDetector):
+class CardPaymentGateway(PaymentGateway):
+class FakePaymentGateway(PaymentGateway):
 ```
 
 ## Python
 
 **Always use Pydantic over Python's `dataclasses`.**
 **Why:** We love pydantic and will always use it over Python dataclasses.
-**How to apply:** For a result or value type, `from pydantic.dataclasses import dataclass`, and keep `@dataclass(frozen=True)`. Example (evaluation-api `line_language_check.py`, `LineVerdict`):
+**How to apply:** For a result or value type, `from pydantic.dataclasses import dataclass`, and keep `@dataclass(frozen=True)`. Example (`FraudVerdict`):
 ```python
 # before
 from dataclasses import dataclass
@@ -399,27 +391,27 @@ from pydantic.dataclasses import dataclass
 ```
 
 **Test emptiness with `len(x) == 0` and missing with `is None`, not by truthiness.**
-**Why:** `if not letter_count_in_line_by_script:` could mean empty, `None` or `0`. `len(x) == 0` can only mean empty, so the reader sees exactly what is tested, and a later type change (a `Counter` that becomes `Optional[Counter]`) can't change the meaning without anyone noticing. It also matches the habit from Scala and ZIO of testing emptiness explicitly. PEP 8 and linters such as ruff (`PLC1802`) prefer `if not x`, so turn that check off if a linter is added.
-**How to apply:** Use `len(x) == 0` for empty and `len(x) > 0` for not empty on lists, sets, dicts and counters. Use `x is None` / `x is not None` for a missing value. Keep `if flag:` and `if not flag:` for booleans. Example (evaluation-api `line_language_check.py`):
+**Why:** `if not spend_by_category:` could mean empty, `None` or `0`. `len(x) == 0` can only mean empty, so the reader sees exactly what is tested, and a later type change (a `Counter` that becomes `Optional[Counter]`) can't change the meaning without anyone noticing. It also matches the habit from Scala and ZIO of testing emptiness explicitly. PEP 8 and linters such as ruff (`PLC1802`) prefer `if not x`, so turn that check off if a linter is added.
+**How to apply:** Use `len(x) == 0` for empty and `len(x) > 0` for not empty on lists, sets, dicts and counters. Use `x is None` / `x is not None` for a missing value. Keep `if flag:` and `if not flag:` for booleans. Example:
 ```python
 # not this
-if not letter_count_in_line_by_script:
+if not spend_by_category:
     return None
 
 # this
-if len(letter_count_in_line_by_script) == 0:
+if len(spend_by_category) == 0:
     return None
 ```
 
 **Write `Optional[X]`, not `X | None`.**
 **Why:** We don't like `| None`. We prefer `Optional[...]`.
-**How to apply:** Use `Optional[X]` for variables, parameters and return types, with `from typing import Optional`. Example (evaluation-api `language_adherence_metrics.py`):
+**How to apply:** Use `Optional[X]` for variables, parameters and return types, with `from typing import Optional`. Example:
 ```python
 # not this
-verdict: LineVerdict | None = check_line(line, expected_lang, self.language_detector)
+verdict: FraudVerdict | None = assess_fraud_risk(order)
 
 # this
-verdict: Optional[LineVerdict] = check_line(line, expected_lang, self.language_detector)
+verdict: Optional[FraudVerdict] = assess_fraud_risk(order)
 ```
 
 **Use plain for-loops, not list comprehensions, for multi-step logic.**
@@ -459,7 +451,7 @@ private class MyServiceImpl() extends MyService { ... }
 
 **When one class switches on its input kind in several places, split it into a sealed trait with one case class per kind.**
 **Why:** A class with `Option` fields that only one kind uses, plus a `match` on the kind in each method, mixes two behaviours together. With one type per kind, each type holds only its own state, and the compiler checks each case.
-**How to apply:** e.g. `class Matcher(pattern)` with `Option[PhraseState]` and `pattern match` in 3 methods → `sealed trait Matcher` with `KeywordMatcher` and `PhraseMatcher`. Put the part both kinds share (counters, current match, marks) in its own case class that each one holds (`progress: MatchProgress`). Use a factory on the companion (`Matcher.forPattern(pattern)`).
+**How to apply:** e.g. `class Discount(offer)` with `Option[BundleState]` and `offer match` in 3 methods → `sealed trait Discount` with `PercentOffDiscount` and `BundleDiscount`. Put the part both kinds share (items seen, saving so far) in its own case class that each one holds (`progress: DiscountProgress`). Use a factory on the companion (`Discount.forOffer(offer)`).
 
 **Use sealed trait / enum ADTs for all closed value sets.**
 **Why:** The compiler enforces exhaustive pattern matching; adding a case surfaces every unhandled site immediately.
@@ -469,10 +461,10 @@ private class MyServiceImpl() extends MyService { ... }
 **Why:** Keeps the case class body clean; scoping in the companion makes implicits available everywhere the type is used.
 **How to apply:**
 ```scala
-case class QueryRequest(query: String, limit: Int)
-object QueryRequest {
-  implicit val decoder: Decoder[QueryRequest] = deriveDecoder
-  implicit val encoder: Encoder[QueryRequest] = deriveEncoder
+case class OrderRequest(productId: String, quantity: Int)
+object OrderRequest {
+  implicit val decoder: Decoder[OrderRequest] = deriveDecoder
+  implicit val encoder: Encoder[OrderRequest] = deriveEncoder
 }
 ```
 Use `Configuration.default.withSnakeCaseMemberNames` for API contracts where JSON uses snake_case.
@@ -509,8 +501,8 @@ ZIO.fromEither(decode[Foo](json))        // circe Either
 **Why:** Long `ZIO[A & B & C & D, E, F]` signatures hurt readability and become a maintenance burden when the dependency set changes.
 **How to apply:**
 ```scala
-type SearchDeps = LLMClient & MCPClient & UserContextService & Scope
-def search(...): ZIO[SearchDeps, AgentError, SearchResult]
+type CheckoutDeps = PaymentGateway & StockService & UserService & Scope
+def checkout(...): ZIO[CheckoutDeps, CheckoutError, Receipt]
 ```
 
 **Use extension methods to add utility to ZIO effects without subclassing.**
