@@ -18,6 +18,19 @@ Only then start to refactor.
 - **After every refactor commit:** run the snapshot and the benchmark. Put the before → after numbers in the commit message, e.g. "Same output (10,080-case snapshot unchanged). 1,500-page input: 87 → 94 ms."
 - **Budget:** a small cost for a clear readability gain is fine. Making the scanner immutable cost about 5–8% (87 → 94 ms) with identical output, and that was accepted. If a step costs more than that, or memory grows with the input when it didn't before, stop and report the numbers before you go on.
 
+**Write down why each tuned value is what it is, in a README next to the code, and link to it from the constant.**
+**Why:** A threshold picked by measuring (a confidence bar, a minimum length) looks arbitrary in the code. Without the evidence, the next person can't tell whether it is safe to change, and the numbers get argued again.
+**How to apply:** For each tuned value, the README says:
+- the rule in plain words;
+- the data it was measured on;
+- real examples just over and just under it;
+- what goes wrong on each side (false fails, false passes);
+- why this value.
+
+The constant gets a one-line comment with the link: `MIN_CONFIDENCE = 0.90  # see README.md#confidence-bar`. Other comments and docs name the constant, not its number ("at or above `MIN_CONFIDENCE`"), so they don't go stale when it changes.
+When you find a value with no reason given, ask Patrick whether to check that it is the best value (if nobody has yet) and write it up in the README.
+Before changing a tuned value, run it on real data and list what changes on both sides: the new false fails and the new false passes. Also check the inputs near the new value that aren't in your sample (for a word-frequency bar, the common words just under it). Real runs show only what they happen to contain.
+
 **When there are several reasonable designs, build each one on its own branch and compare them.**
 **Why:** Opinions about which design reads best are cheap to test and expensive to argue about. Real code and real numbers settle it.
 **How to apply:** Give each option a letter and a branch (`<ticket>-option-a`, `-option-b`, …), all from the same base. Run the same snapshot and benchmark on each one. Report a table with output (same/different), latency, memory and a short readability note, then recommend one. Options can be combined (e.g. "D+E"). Treat a difference smaller than run-to-run noise as no difference.
@@ -94,6 +107,20 @@ Why Latin goes: in an Arabic, Hindi, Japanese or Chinese answer, Latin words (na
 **Why:** Functions that do their own data fetching/transformation AND computation are hard to unit-test.
 **How to apply:** e.g. `get_retrieval_scores` takes `List[RetrievalData]`; the caller calls `get_retrieval_data` first. Each function does one thing.
 
+**A function that only applies to some inputs shouldn't accept the others and return a dummy answer. The caller decides when to call it.**
+**Why:** `return False` for an input the function doesn't apply to looks like a real answer ("no"), when it means "not asked". Readers and tests then have to cover cases that mean nothing.
+**How to apply:** Move the "does this apply?" check to the caller, or into a lookup that only has entries for the inputs it applies to:
+```python
+# not this
+def vat_due(order):
+    if order.region != "EU":
+        return 0
+    ...
+
+# this
+vat = vat_due(order) if order.region == "EU" else None
+```
+
 **Separate pure computation from I/O — pure functions are testable and composable.**
 **Why:** Pure functions (no side effects, deterministic inputs/outputs) are easier to test, reason about, and reuse. I/O is a separate concern.
 **How to apply:** Extract pure logic (e.g., `_apply_sbt_version_to_lines()` takes lines, returns updated lines) from I/O wrappers (e.g., `update_sbt_version()` reads file, calls pure function, writes result).
@@ -137,6 +164,7 @@ Why Latin goes: in an Arabic, Hindi, Japanese or Chinese answer, Latin words (na
 - `other_language` → `other_han_language`. It only ever means the other Han language: Chinese in a Japanese answer, Japanese in a Chinese one. The same goes for `_find_other_language_characters_failure` → `_find_other_han_language_characters_failure` and `_characters_used_only_in` → `_han_characters_used_only_in`.
 - `foreign_alphabet` (in code we name) → `unexpected_alphabet`: foreign to whom? The outside key `reason="foreign_alphabet"` stays (see "Keep names in an outside contract").
 - `_CHARACTERS_USED_ONLY_IN` → `_HAN_CHARACTERS_USED_ONLY_BY_LANGUAGE`, and `_REASON_OF_…` → `_FINDING_KIND_BY_HAN_LANGUAGE`: say which characters, and which kind of reason.
+- When a thing only applies to some inputs, say where in its name: `MISSING_VAT_NUMBER` → `MISSING_VAT_NUMBER_IN_EU_INVOICE`. The reader then knows where it applies without reading the code. A name that applies everywhere stays short.
 
 **Name functions for what they do in the problem. A generic verb is fine when it fits the work and has an object.**
 **Why:** `accept`, `observe`, `process`, `handle`, `finish`, `start` on their own say that something happens, not what. The reader has to open the function to find out. We don't hate generic verbs. The verb has to fit what the function really does, and it needs an object that says what it works on.
@@ -159,6 +187,7 @@ Example of a verb that did not fit (evaluation-api `line_language_check.py`): `c
 **Keep names in an outside contract when you rename the code behind it.**
 **Why:** An API response key, a JSON field or a stored column is read by other code (a dashboard, another repo). Renaming it breaks them.
 **How to apply:** Rename the internal field and keep the external key: `LineVerdict.decided_by` is still written as `"check"` in `line_analysis`. Say so in the commit message.
+Keep the outside key only when someone already reads it. While the contract is new and nothing outside reads it yet, rename the value with the name, so the code and the output say the same thing: `FOREIGN_WORD = "foreign_word"` → `FOREIGN_WORD_IN_ENGLISH_ANSWER = "foreign_word_in_english_answer"`.
 
 **Don't add a parameter until a caller passes it, and don't give it a do-nothing default.**
 **Why:** An unused parameter with an identity default (`without_kept_as_written=_nothing_kept_as_written`) makes the reader look for a caller that doesn't exist, and asks "why is this here?".
@@ -167,6 +196,16 @@ Example of a verb that did not fit (evaluation-api `line_language_check.py`): `c
 **Use one word for one idea, and pick the word the users of the code see.**
 **Why:** When the code says "fragment" and the API says "snippet" for the same thing, readers wonder whether they are two things.
 **How to apply:** Choose the word from the public API or the product, and use it in type names, fields, functions, test names and comments. Keep a library's own word only where you talk about that library, e.g. "a port of Lucene's `mergeContiguousFragments`".
+The same goes for values. When two checks mean the same thing, they use one constant, not two numbers that happen to be close:
+```python
+# not this
+MIN_AGE_TO_SIGN_UP = 18
+MIN_AGE_TO_ORDER_ALCOHOL = 18   # the same idea, "an adult", kept twice
+
+# this
+ADULT_AGE = 18
+```
+Two numbers for one idea drift apart, and the reader has to ask why they differ.
 
 **Use named arguments when a call has several values of the same type, or values whose meaning isn't clear from the call.**
 **Why:** `rank(tokens, 1200, 100, 4, queries)` can't be checked by reading it. Named arguments make a wrong order visible.
@@ -193,6 +232,56 @@ Example of a verb that did not fit (evaluation-api `line_language_check.py`): `c
 **Write tests that read like documentation of the behaviour.**
 **Why:** A good test name tells the reader the rule without them reading the code. A failing test then says which rule broke.
 **How to apply:** Name each test as a sentence about what the code does, using the domain words, e.g. `"keeps the earlier match when two matches score the same"`. Use small, real-looking inputs (a real sentence, not `"a b c"`). Group tests by the function they test (`suite("scoreLine")`), and cover private helpers through their package-private access.
+Test one behaviour per test. A test named "does A, B, C and D" hides which one broke, and its expected value mixes all four:
+```python
+# not this
+def test_masks_card_numbers_emails_and_phone_numbers(self): ...
+
+# this
+def test_masks_a_card_number(self): ...
+def test_masks_an_email(self): ...
+def test_masks_a_phone_number(self): ...
+```
+A test name or category is a claim about the code, so it must be true for every case in it. Say what the code does with the input, not what the input is:
+```python
+# not this: "BTC" is not a currency, the code only treats it as one
+def test_btc_is_a_currency(self): ...
+
+# this
+def test_btc_is_treated_as_a_currency(self): ...
+```
+If a case doesn't fit its category, move it or rename the category; don't leave a wrong label.
+When a helper only makes sense as part of something bigger, the test class says what it is for. Give the class a docstring with the purpose, and add one test through the public entry point that shows the helper doing its job:
+```python
+class TestIsSameHousehold:
+    """What it is for: two orders to the same household share one delivery slot."""
+
+    def test_two_orders_to_the_same_household_get_one_delivery_slot(self):
+        assert plan_deliveries([order_a, order_b]) == [DeliverySlot(orders=[order_a, order_b])]
+
+    def test_the_same_street_and_number_is_the_same_household(self): ...
+```
+Tests of the helper alone show the rules. The test through the entry point shows why the rules exist.
+
+**When a test runs many examples, group them by category in a dict, and let each case's id name its category.**
+**Why:** A flat list of 15 inputs doesn't say why each one is there. Grouped, the reader sees the kinds of input the rule covers, and a failing case says which kind broke.
+**How to apply:** Put the dict in the test class, named `<THINGS>_BY_CATEGORY`, and build the cases with `pytest.param`:
+```python
+class TestIsValidPostcode:
+    POSTCODES_BY_CATEGORY = {
+        "London": ["SW1A 1AA", "EC1A 1BB"],
+        "no space": ["SW1A1AA"],
+        "lower case": ["sw1a 1aa"],
+    }
+
+    @pytest.mark.parametrize(
+        "postcode",
+        [pytest.param(postcode, id=f"{category}: {postcode}") for category, postcodes in POSTCODES_BY_CATEGORY.items() for postcode in postcodes],
+    )
+    def test_accepts_uk_postcodes(self, postcode):
+        assert is_valid_postcode(postcode) is True
+```
+A failure then reads `test_accepts_uk_postcodes[no space: SW1A1AA]`.
 
 **In a test, show the data the code works with.**
 **Why:** A reader of a test should see what data is involved without opening another file. `Counter({'arabic': 20, 'latin': 13})` says more than a call that builds it. Sometimes building the input with the real code shows more about how the function is used, and you can't have both.
@@ -202,6 +291,15 @@ def test_latin_words_in_an_arabic_answer_are_left_to_the_word_check(self):
     letter_count: Counter = count_letters_by_script("يدفع المشتري Purchase Price إلى البائع")
     # Counter({'arabic': 20, 'latin': 13})
     assert _find_unexpected_alphabet_failure(letter_count, frozenset({"arabic"})) is None
+```
+
+Don't put expected values in shared module constants (`DECLINED = PaymentResult(status="declined", retry=False)`) and reuse them across tests. Write the object out in each test, even when it repeats. The reader then sees the whole expected value where it is checked, without scrolling to the top of the file:
+```python
+# not this
+assert charge(card) == DECLINED
+
+# this
+assert charge(card) == PaymentResult(status="declined", retry=False)
 ```
 
 **In a test, compare the whole expected object with the whole actual object.**
