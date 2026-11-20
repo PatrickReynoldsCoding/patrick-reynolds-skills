@@ -276,12 +276,18 @@ class TestIsValidPostcode:
 A failure then reads `test_accepts_uk_postcodes[no space: SW1A1AA]`.
 
 **In a test, show the data the code works with.**
-**Why:** A reader of a test should see what data is involved without opening another file. `Counter({'gift_card': 50, 'book': 20})` says more than a call that builds it. Sometimes building the input with the real code shows more about how the function is used, and you can't have both.
-**How to apply:** Define the input object in full where you can (`spend_by_category = Counter({"gift_card": 50, "book": 20})`). When you build it with the real code because that shows the context, add a comment with the value it equals. That comment is a deliberate exception to the no-comment rule. Example:
+**Why:** A reader of a test should see what data is involved without opening another file. `Counter({'gift_card': 50, 'book': 20})` says more than a call that builds it.
+**How to apply:** Define the input object in full, in a named variable, instead of building it with other code. Don't build it with a call and add a comment with its value: the comment goes stale when that code changes, and the test then reads one value and runs on another. Leave building the input to that code's own tests. Example:
 ```python
+# not this
 def test_gift_cards_are_left_out_of_the_discount(self):
     spend_by_category: Counter = spend_by_category_of([Item("book", 20), Item("gift_card", 50)])
     # Counter({'gift_card': 50, 'book': 20})
+    assert discountable_spend(spend_by_category) == 20
+
+# this
+def test_gift_cards_are_left_out_of_the_discount(self):
+    spend_by_category: Counter = Counter({"gift_card": 50, "book": 20})
     assert discountable_spend(spend_by_category) == 20
 ```
 
