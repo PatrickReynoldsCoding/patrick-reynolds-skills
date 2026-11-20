@@ -21,6 +21,7 @@ A Claude Code plugin with general-purpose skills and a small hook catalog.
 | `refactor-and-review` | Go through a code change with you one bit at a time: say what it does, refactor it to the coding-style guide (names, helpers, no comments), run the tests, and add good before/after examples to the guide. |
 | `split-pr` | Split a PR that is too big to review into a stack of small draft PRs, one idea each, merging in order into an integration branch. Offers `/refactor-and-review` first, asks before splitting, allows only named placeholders that are gone at the top, and proves the top matches the original. |
 | `excel-table` | Build a styled `.xlsx` table (wrapped cells, fitted row heights, colour groups, legend). |
+| `text-me` | Send a push notification to your phone through ntfy. Reads the topic from the `NTFY_TOPIC` environment variable, so the secret is never in the repo. |
 | `writing-style` | List the writing styles, or choose the one every new session loads (see Writing styles). |
 
 ## Writing styles
