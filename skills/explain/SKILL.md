@@ -24,7 +24,7 @@ argument-hint: "[asd] <what to explain>"
 Leave a section out if it adds nothing. A small question gets a small answer.
 
 ## Style
-- **Default:** read `${CLAUDE_PLUGIN_ROOT}/knowledge/writing-style.md` (the plugin root is 2 folders above this skill's folder) and follow it.
+- **Default:** read `${CLAUDE_PLUGIN_ROOT}/writing-styles/plain.md` (the plugin root is 2 folders above this skill's folder) and follow it.
 - **ASD mode:** if the request starts with `asd` (e.g. `/explain asd how the cache works`), also read `ASD-STE100.md` in this skill's folder and follow it. Drop the word `asd` from the topic.
 
 ## Code references

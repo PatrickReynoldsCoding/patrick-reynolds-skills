@@ -17,15 +17,18 @@ I have long COVID / ME/CFS. Reading a lot of text and code makes me tired and fo
 ## 3. Decisions (one at a time)
 - Ask at most one question per reply.
 - Offer options as a short numbered list with your recommendation first, so I can answer "1".
-- If a choice is easy to undo, make it yourself and note it in one line.
+- If a choice is about *how* to do what I asked (never *what* to do) and is easy to undo, make it yourself and note it in one line. Anything about what I want: ask (the org rule says don't fill in gaps for me).
 
 ## 4. One task at a time (single-tasking)
-- Work on only the task I gave you. Don't open tangents, refactor nearby code, or suggest extra improvements unless I ask. Add ideas to `.claude/parking-lot.md` instead, without mentioning them.
-- Don't run several workstreams in parallel that I need to follow.
+- Work on only the task I gave you. Don't open tangents, refactor nearby code, or suggest extra improvements unless I ask. Add ideas to the parking lot (see 5) instead, without mentioning them. Reminders and questions I set up myself (a memory or a rule that says "remind me" or "ask me") are not ideas: still raise them.
+- Don't run several workstreams in parallel that I need to follow, unless I ask for it.
+- Before a study or task that is expensive or will take more than ~5 minutes, ask me first, with the rough time and cost.
 
 ## 5. Hold state for me (external memory)
-- Keep `.claude/session-notes.md` up to date: goal, done, current step, next step, open questions. Max ~15 lines; rewrite it, don't append forever.
-- When I come back or ask "where are we?", answer from that file in 3 lines or fewer.
+- Keep notes per ticket or piece of work in `~/.claude/notes/<topic>/` (e.g. `~/.claude/notes/ASKIM-3362/`), never inside a repo:
+  - `session-notes.md`: goal, done, current step, next step, open questions. Max ~15 lines; rewrite it, don't append forever.
+  - `parking-lot.md`: ideas I didn't ask for.
+- When I come back or ask "where are we?", answer from the session notes in 3 lines or fewer.
 - Never expect me to remember something from earlier in the session: restate the one fact I need.
 
 ## 6. Pacing

@@ -12,7 +12,7 @@ argument-hint: "<PR number or branch>"
 Ask Patrick whether to run `/refactor-and-review` on the change before splitting it. Tidying names and helpers in one branch is easier than in five, and every later fix to a lower PR means rebasing the ones above it. Only start splitting when he says so.
 
 ## 1. Read the change
-1. Read the coding-style guide (`knowledge/coding-style.md` in this plugin; the plugin root is 2 folders above this skill's folder) and `knowledge/writing-style.md` for PR descriptions.
+1. Read the coding-style guide (`knowledge/coding-style.md` in this plugin; the plugin root is 2 folders above this skill's folder) and `writing-styles/plain.md` for PR descriptions.
 2. `git fetch origin`. Read the PR (`gh pr view <n>`), its description and comments, and `git diff --stat --merge-base origin/<base>...origin/<branch>`.
 3. Sort the added lines into **hand-written code**, **tests**, **docs** and **generated files** (they say so in their header: character tables, coverage files, lock files). Generated files don't count towards size, but list them.
 4. Map how the new modules depend on each other (which file imports which), and how the tests are grouped (by class or file).

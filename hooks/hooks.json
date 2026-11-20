@@ -1,0 +1,16 @@
+{
+  "description": "Load the writing style chosen with /writing-style at the start of every session",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/writing-style/writing_style.py\" session-start",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

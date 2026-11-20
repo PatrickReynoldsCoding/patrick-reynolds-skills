@@ -65,7 +65,7 @@ Find the default branch with `git symbolic-ref refs/remotes/origin/HEAD` (fall b
    - Say at the top of the file, and at the top of Parts 1 and 2, which branch to check out. In Part 3, say that "On <old>" links need the old branch and "On <new>" links and tests need the new one.
    - Write placeholders (e.g. `[[A:SS:41]]`, `[[B:SS:41]]`) and expand them with a script. The script also prints each linked line, so you can check it is the code you mean, and fails if a file or line doesn't exist. 
 7. **Find the tests for each flow** (in the new-code part). Link them. If there is none, write **No test**. That is a gap, so list it in **Gaps** too.
-8. **Write the file** (template below). Follow the shared writing style in `${CLAUDE_PLUGIN_ROOT}/knowledge/writing-style.md` (the plugin root is 2 folders above this skill's folder). Flow steps stay facts; the style applies to the "Why", the notes and your **Claude check** comments.
+8. **Write the file** (template below). Follow the shared writing style in `${CLAUDE_PLUGIN_ROOT}/writing-styles/plain.md` (the plugin root is 2 folders above this skill's folder). Flow steps stay facts; the style applies to the "Why", the notes and your **Claude check** comments.
 9. **Reply** with:
    - the file path;
    - the key flows and why;

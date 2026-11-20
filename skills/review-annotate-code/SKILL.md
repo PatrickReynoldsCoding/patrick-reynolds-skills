@@ -174,7 +174,7 @@ This keeps the tour, but on GitHub instead of in the code. Each annotation becom
    - Remind the reader that any uncommitted non-annotation edits are still there, untouched.
 
 ## Comment Style
-Read `${CLAUDE_PLUGIN_ROOT}/knowledge/writing-style.md` (the plugin root is 2 folders above this skill's folder) and follow it. It has the rules, with `CODE-EXPLAINER` examples.
+Read `${CLAUDE_PLUGIN_ROOT}/writing-styles/plain.md` (the plugin root is 2 folders above this skill's folder) and follow it. It has the rules, with `CODE-EXPLAINER` examples.
 
 On top of that, for comments:
 

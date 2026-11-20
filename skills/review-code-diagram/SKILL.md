@@ -35,7 +35,7 @@ argument-hint: "[flow to draw | path to an existing .excalidraw to update]"
    - Keep labels short: method name and the main argument. 5–15 messages is a good size. Split big flows into more diagrams.
    - External systems (a database, a message queue, an LLM, an MCP server) have no `file`. Link them to the client code that calls them.
 3. **Run:** `python3 <skill dir>/scripts/seq2excalidraw.py <spec.json> "${CODE_DIAGRAM_ROOT:-$HOME/diagrams}/<repo>/<flow>.excalidraw"`
-4. **Tell the user** (in the shared writing style, `${CLAUDE_PLUGIN_ROOT}/knowledge/writing-style.md`; the plugin root is 2 folders above this skill's folder) the one-click `http://diagrams.localhost:7878/?file=...` link and the full file path, and give the flow as a short numbered list with the same step numbers and IntelliJ links, so text and diagram match.
+4. **Tell the user** (in the shared writing style, `${CLAUDE_PLUGIN_ROOT}/writing-styles/plain.md`; the plugin root is 2 folders above this skill's folder) the one-click `http://diagrams.localhost:7878/?file=...` link and the full file path, and give the flow as a short numbered list with the same step numbers and IntelliJ links, so text and diagram match.
 
 ## Update an existing diagram
 - **Always read the file first.** The user may have moved, added, deleted or relabelled shapes. Their changes win.

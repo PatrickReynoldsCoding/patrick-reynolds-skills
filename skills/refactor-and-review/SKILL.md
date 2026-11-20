@@ -11,7 +11,7 @@ argument-hint: "[base branch or PR number] [file or area to start with]"
 This is a conversation, not a batch job. Patrick reviews each bit, often names things himself, and decides what changes.
 
 ## 1. Before you start
-1. **Read the guide:** `knowledge/coding-style.md` in this plugin (the plugin root is 2 folders above this skill's folder). Read the general section and the section for the change's language. Read `knowledge/writing-style.md` for how to write your replies.
+1. **Read the guide:** `knowledge/coding-style.md` in this plugin (the plugin root is 2 folders above this skill's folder). Read the general section and the section for the change's language. Read `writing-styles/plain.md` for how to write your replies.
 2. **Find the change.**
    - Target: the current branch (`HEAD`). Base: the argument, else the base of the branch's open PR (`gh pr view --json baseRefName -q .baseRefName`), else `main`. `git fetch origin` and diff against `origin/<base>` with `--merge-base`.
    - List the files and their size: `git diff --stat --merge-base origin/<base>`. Skip generated files (they say so in their header), lock files and test data. Ask Patrick which file to start with if the argument doesn't say. Otherwise start with the entry point and go down to its helpers.
