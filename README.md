@@ -46,4 +46,4 @@ into `~/.claude/settings.json` as its README says.
 
 - `notify-claude-ready/` — macOS notification when Claude finishes a turn.
 - `notify-permission-request/` — macOS notification when Claude asks for permission.
-- `pending-results/` — hold subagent results until you're ready, with a status line count and reminders.
+- `pending-results/` — a per-session shelf: subagent results held until you are ready, plus `todo:` capture, with a status line count per state.
